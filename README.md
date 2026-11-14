@@ -19,7 +19,12 @@ A time trial leaderboard for **Mario Kart 8 Deluxe** (150cc and 200cc, all 96 tr
 
 ## Setup
 
-Requires Node.js 18 or later.
+Requires **Node.js 22 or later** (`better-sqlite3` does not support older versions). On Debian/Ubuntu:
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+apt install -y nodejs
+```
 
 ```bash
 npm install
