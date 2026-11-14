@@ -215,3 +215,15 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 @media (max-width: 860px) { .legal { padding: 20px 18px; } }
 
 .region-icon { margin-right: 8px; }
+
+/* ---------- Discord verification ---------- */
+.steps { list-style: none; padding: 0; margin: 0 0 18px; display: grid; gap: 18px; }
+.steps li { display: flex; gap: 14px; align-items: flex-start; }
+.steps p { margin: 4px 0 10px; }
+.step-n { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--yellow); color: #1b1400; font: 400 15px 'Russo One', sans-serif; }
+.verify code, .page-head code { background: var(--bg-2); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; font-size: .95em; }
+.btn-discord { background: #5865f2; }
+.code-row { display: flex; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+.code-input { width: 190px; font: 400 26px 'Russo One', sans-serif; letter-spacing: .3em; text-align: center; padding: 8px 10px; }
+.small { font-size: 13px; }
+.small a { color: var(--blue); }

@@ -48,14 +48,18 @@ const upload = multer({
 // Simple rate limit: N submissions per IP over a sliding window (kept in memory only, never stored)
 const RATE_WINDOW = 10 * 60 * 1000;
 const RATE_MAX = Number(process.env.RATE_LIMIT || 10);
-const hits = new Map();
-function rateLimited(ip) {
-  const now = Date.now();
-  const list = (hits.get(ip) || []).filter((t) => now - t < RATE_WINDOW);
-  list.push(now);
-  hits.set(ip, list);
-  return list.length > RATE_MAX;
+function limiter(max) {
+  const hits = new Map();
+  return (ip) => {
+    const now = Date.now();
+    const list = (hits.get(ip) || []).filter((t) => now - t < RATE_WINDOW);
+    list.push(now);
+    hits.set(ip, list);
+    return list.length > max;
+  };
 }
+const rateLimited = limiter(RATE_MAX);
+const verifyLimited = limiter(20); // code attempts per IP
 
 const app = express();
 app.set('trust proxy', true);
@@ -107,18 +111,39 @@ app.post('/api/submissions', (req, res) => {
       return fail(400, 'You must accept the Terms of Use and the Privacy Policy.');
     }
 
+    // The submission is only sent to the moderators once the player has verified it with /verif on Discord.
+    // Without a configured bot (local tests), it is sent right away.
+    const needsVerification = discord.isEnabled();
+    const token = needsVerification ? crypto.randomBytes(24).toString('hex') : null;
     const sub = store.createSubmission({
       player_name: playerName, country, track_id: trackId, cc, time_ms: timeMs,
-      proof_url: proofUrl, proof_file: req.file ? req.file.filename : null, comment,
+      proof_url: proofUrl, proof_file: req.file ? req.file.filename : null, comment, verify_token: token,
     });
 
-    try {
-      await discord.notifySubmission(sub);
-    } catch (e) {
-      console.error('[discord] Could not send submission:', e.message);
-    }
-    res.status(201).json({ id: sub.id, status: sub.status, time: store.formatTime(sub.time_ms) });
+    if (!needsVerification) await sendToModerators(sub);
+    res.status(201).json({
+      id: sub.id, time: store.formatTime(sub.time_ms), player: sub.player_name,
+      verifyRequired: needsVerification, token, discordInvite: LEGAL.discordInvite,
+    });
   });
+});
+
+async function sendToModerators(sub) {
+  try {
+    await discord.notifySubmission(sub);
+  } catch (e) {
+    console.error('[discord] Could not send submission:', e.message);
+  }
+}
+
+app.post('/api/submissions/:id/verify', async (req, res) => {
+  if (verifyLimited(req.ip)) return res.status(429).json({ error: 'Too many attempts, please wait a few minutes.' });
+  const code = String(req.body?.code || '').replace(/\s/g, '');
+  if (!/^\d{6}$/.test(code)) return res.status(400).json({ error: 'The code has 6 digits.' });
+  const result = store.verifySubmission(Number(req.params.id), req.body?.token, code);
+  if (result.error) return res.status(result.status).json({ error: result.error });
+  if (!result.already) await sendToModerators(result.sub);
+  res.json({ ok: true, discordName: result.sub.discord_name });
 });
 
 app.get('/api/submissions/:id', (req, res) => {
@@ -164,18 +189,19 @@ app.get('/api/records', (req, res) => res.json(store.worldRecords({ cc: ccOf(req
 app.get('/api/stats', (req, res) => res.json(store.stats()));
 app.get('/api/recent', (req, res) => res.json(store.recentRecords(12)));
 
-// Data retention: rejected submissions (and their files) are deleted after N days
+// Data retention: rejected submissions (and their files) are deleted after N days,
+// submissions never verified on Discord after 24 hours
 function purge() {
   try {
-    const files = store.purgeRejected(LEGAL.rejectedRetentionDays);
+    const files = [...store.purgeRejected(LEGAL.rejectedRetentionDays), ...store.purgeUnverified(24)];
     files.forEach((f) => fs.unlink(path.join(UPLOAD_DIR, path.basename(f)), () => {}));
-    if (files.length) console.log(`[purge] ${files.length} rejected proof file(s) deleted.`);
+    if (files.length) console.log(`[purge] ${files.length} proof file(s) of rejected or unverified submissions deleted.`);
   } catch (e) { console.error('[purge]', e.message); }
 }
 purge();
-setInterval(purge, 24 * 60 * 60 * 1000).unref();
+setInterval(purge, 60 * 60 * 1000).unref();
 
 app.listen(PORT, () => {
   console.log(`🏁 MK8DX Leaderboard running on http://localhost:${PORT}`);
-  discord.start().catch((e) => console.error('[discord] Connexion impossible :', e.message));
+  discord.start().catch((e) => console.error('[discord] Could not connect:', e.message));
 });

@@ -3,6 +3,7 @@ const path = require('path');
 const {
   Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
   ModalBuilder, TextInputBuilder, TextInputStyle, AttachmentBuilder, Events, PermissionFlagsBits, MessageFlags, ActivityType,
+  SlashCommandBuilder,
 } = require('discord.js');
 const store = require('./db');
 const { COUNTRY_BY_CODE, REGION_BY_ID } = require('./countries');
@@ -48,6 +49,9 @@ function buildEmbed(sub) {
     .setFooter({ text: `Submission #${sub.id} • ${LABELS[sub.status]}` })
     .setTimestamp(new Date(`${sub.created_at}Z`));
 
+  if (sub.discord_id) {
+    embed.addFields({ name: 'Discord account (verified)', value: `<@${sub.discord_id}> (${sub.discord_name || 'unknown'})` });
+  }
   const link = proofLink(sub);
   if (link) embed.addFields({ name: 'Proof', value: link });
   if (sub.comment) embed.addFields({ name: 'Comment', value: sub.comment.slice(0, 1000) });
@@ -70,6 +74,23 @@ function buildButtons(sub, disabled = false) {
     new ButtonBuilder().setCustomId(`mk8:reject:${sub.id}`).setLabel('Reject').setEmoji('❌')
       .setStyle(ButtonStyle.Danger).setDisabled(disabled),
   );
+}
+
+// Sends a direct message to a player; returns false if their DMs are closed
+async function dm(discordId, content) {
+  if (!ready || !discordId) return false;
+  try {
+    const user = await client.users.fetch(discordId);
+    await user.send(content);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function trackLabel(sub) {
+  const track = store.TRACK_BY_ID[sub.track_id];
+  return `${track ? track.name : sub.track_id} ${sub.cc}cc (${store.formatTime(sub.time_ms)})`;
 }
 
 async function notifySubmission(sub) {
@@ -105,6 +126,10 @@ async function refreshMessage(interaction, sub) {
 }
 
 async function handleInteraction(interaction) {
+  if (interaction.isChatInputCommand()) {
+    await handleCommand(interaction);
+    return;
+  }
   const id = interaction.customId || '';
   if (!id.startsWith('mk8:')) return;
   const [, action, rawId] = id.split(':');
@@ -118,12 +143,20 @@ async function handleInteraction(interaction) {
   const reviewer = interaction.user.globalName || interaction.user.username;
 
   if (interaction.isButton() && action === 'approve') {
-    const { sub, changed } = store.approveSubmission(subId, reviewer);
+    let result;
+    try {
+      result = store.approveSubmission(subId, reviewer);
+    } catch (e) {
+      await interaction.reply({ content: `⚠️ ${e.message}`, flags: MessageFlags.Ephemeral });
+      return;
+    }
+    const { sub, changed } = result;
     if (!changed) {
       await interaction.reply({ content: `This submission has already been reviewed (${LABELS[sub.status]}).`, flags: MessageFlags.Ephemeral });
       return;
     }
     await refreshMessage(interaction, sub);
+    dm(sub.discord_id, `✅ Your time on **${trackLabel(sub)}** has been approved and is now on the leaderboard! ${PUBLIC_URL}`);
     return;
   }
 
@@ -150,7 +183,67 @@ async function handleInteraction(interaction) {
       return;
     }
     await refreshMessage(interaction, sub);
+    dm(sub.discord_id, `❌ Your time on **${trackLabel(sub)}** was rejected.${sub.reject_reason ? `\nReason: ${sub.reject_reason}` : ''}`);
   }
+}
+
+// ---------- Slash commands ----------
+const COMMANDS = [
+  new SlashCommandBuilder().setName('verif')
+    .setDescription('Get a 6-digit code by DM to verify your time submission on the website'),
+  new SlashCommandBuilder().setName('link')
+    .setDescription('Moderators: link a player name to a Discord account')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+    .addStringOption((o) => o.setName('player').setDescription('Player name on the leaderboard').setRequired(true))
+    .addUserOption((o) => o.setName('user').setDescription('Discord account').setRequired(true)),
+];
+
+async function handleCommand(interaction) {
+  const ephemeral = (content) => interaction.reply({ content, flags: MessageFlags.Ephemeral });
+
+  if (interaction.commandName === 'verif') {
+    const { user } = interaction;
+    const result = store.issueCode(user.id, user.username);
+    if (result.cooldown) {
+      await ephemeral(`⏳ Please wait ${result.cooldown} s before asking for a new code.`);
+      return;
+    }
+    const text = `🔐 Your verification code: **${result.code}**\n`
+      + `Enter it on the website within ${result.minutes} minutes to confirm your submission. Never share this code.`;
+    if (await dm(user.id, text)) {
+      await ephemeral('📩 I sent you a 6-digit code by DM. Enter it on the website.');
+    } else {
+      // DMs closed: show the code only to this user
+      await ephemeral(`${text}\n\n_(I couldn't DM you: your direct messages are closed for this server.)_`);
+    }
+    return;
+  }
+
+  if (interaction.commandName === 'link') {
+    if (!canModerate(interaction)) {
+      await ephemeral('⛔ Only moderators can use this command.');
+      return;
+    }
+    const name = interaction.options.getString('player', true).trim();
+    const target = interaction.options.getUser('user', true);
+    const result = store.linkPlayer(name, target.id);
+    await ephemeral(result.error ? `⚠️ ${result.error}` : `🔗 "${result.player}" is now linked to <@${target.id}>.`);
+  }
+}
+
+// Sends the verified submissions that arrived while the bot was offline
+async function sendBacklog() {
+  const subs = store.unsentSubmissions();
+  for (const sub of subs) await notifySubmission(sub);
+  if (subs.length) console.log(`[discord] ${subs.length} waiting submission(s) sent to the moderators.`);
+}
+
+async function registerCommands() {
+  const channel = await client.channels.fetch(CHANNEL_ID);
+  if (!channel.guild) throw new Error('DISCORD_CHANNEL_ID must be a channel of a server.');
+  // Registered on the server only: available instantly
+  await channel.guild.commands.set(COMMANDS.map((c) => c.toJSON()));
+  console.log(`[discord] Slash commands registered on "${channel.guild.name}".`);
 }
 
 async function start() {
@@ -166,6 +259,8 @@ async function start() {
   client.once(Events.ClientReady, (c) => {
     ready = true;
     console.log(`[discord] Logged in as ${c.user.tag}`);
+    registerCommands().catch((e) => console.error('[discord] Could not register slash commands:', e.message));
+    sendBacklog().catch((e) => console.error('[discord] Could not send waiting submissions:', e.message));
   });
   client.on(Events.InteractionCreate, (interaction) => {
     handleInteraction(interaction).catch((err) => {
@@ -178,4 +273,6 @@ async function start() {
   await client.login(TOKEN);
 }
 
-module.exports = { start, notifySubmission, buildEmbed, buildButtons, handleInteraction };
+const isEnabled = () => Boolean(TOKEN && CHANNEL_ID);
+
+module.exports = { start, isEnabled, notifySubmission, buildEmbed, buildButtons, handleInteraction, COMMANDS };

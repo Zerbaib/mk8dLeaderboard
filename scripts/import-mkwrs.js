@@ -68,14 +68,40 @@ function parse(html) {
   return { records, problems };
 }
 
+const HELP = `
+Could not download ${SOURCE}
+(the site may be down or may not accept requests from your server).
+Alternative: open ${SOURCE} in your browser, save the page (Ctrl+S, "Web page, HTML only"),
+copy the file to the server, then run:
+  npm run import-wrs -- --file mkwrs.html`;
+
+// One retry after the crawl delay requested by the site (20 s)
+async function download() {
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const res = await fetch(SOURCE, {
+        headers: { 'User-Agent': 'mk8dx-leaderboard-import' },
+        signal: AbortSignal.timeout(30000),
+      });
+      if (res.ok) return await res.text();
+      console.warn(`Download failed: HTTP ${res.status} ${res.statusText}`);
+    } catch (e) {
+      console.warn(`Download failed: ${e.cause?.code || e.message}`);
+    }
+    if (attempt === 1) {
+      console.warn('Retrying in 20 s...');
+      await new Promise((r) => setTimeout(r, 20000));
+    }
+  }
+  throw new Error(HELP);
+}
+
 async function main() {
   let html;
   if (file) {
     html = fs.readFileSync(file, 'utf8');
   } else {
-    const res = await fetch(SOURCE, { headers: { 'User-Agent': 'mk8dx-leaderboard-import (+https://github.com)' } });
-    if (!res.ok) throw new Error(`Download failed: HTTP ${res.status}`);
-    html = await res.text();
+    html = await download();
   }
 
   const { records, problems } = parse(html);

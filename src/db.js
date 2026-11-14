@@ -1,4 +1,5 @@
 const path = require('path');
+const crypto = require('crypto');
 const fs = require('fs');
 const Database = require('better-sqlite3');
 const { TRACKS, TRACK_BY_ID } = require('./tracks');
@@ -48,6 +49,33 @@ CREATE TABLE IF NOT EXISTS country_regions (
 );
 `);
 
+// ---------- Migrations (add columns to databases created by older versions) ----------
+function addColumn(table, column, definition) {
+  const exists = db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
+  if (!exists) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  return !exists;
+}
+// Discord verification of submissions
+addColumn('submissions', 'verify_token', 'TEXT');
+addColumn('submissions', 'verify_attempts', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('submissions', 'discord_id', 'TEXT');
+addColumn('submissions', 'discord_name', 'TEXT');
+if (addColumn('submissions', 'verified_at', 'TEXT')) {
+  // Submissions made before verification existed are considered verified
+  db.exec('UPDATE submissions SET verified_at = created_at');
+}
+addColumn('players', 'discord_id', 'TEXT');
+db.exec(`
+CREATE UNIQUE INDEX IF NOT EXISTS idx_players_discord ON players (discord_id) WHERE discord_id IS NOT NULL;
+CREATE TABLE IF NOT EXISTS verification_codes (
+  code         TEXT PRIMARY KEY,
+  discord_id   TEXT NOT NULL,
+  discord_name TEXT NOT NULL,
+  created_at   INTEGER NOT NULL,
+  expires_at   INTEGER NOT NULL
+);
+`);
+
 db.transaction(() => {
   db.prepare('DELETE FROM country_regions').run();
   const ins = db.prepare('INSERT INTO country_regions (code, region) VALUES (?, ?)');
@@ -71,12 +99,15 @@ function formatTime(ms) {
 
 // ---------- Submissions ----------
 const insertSubmission = db.prepare(`
-  INSERT INTO submissions (player_name, country, track_id, cc, time_ms, proof_url, proof_file, comment)
-  VALUES (@player_name, @country, @track_id, @cc, @time_ms, @proof_url, @proof_file, @comment)
+  INSERT INTO submissions (player_name, country, track_id, cc, time_ms, proof_url, proof_file, comment, verify_token, verified_at)
+  VALUES (@player_name, @country, @track_id, @cc, @time_ms, @proof_url, @proof_file, @comment, @verify_token, @verified_at)
 `);
 
+// `verify_token` is null for submissions that do not need a Discord verification (imports, bot disabled)
 function createSubmission(data) {
-  const info = insertSubmission.run(data);
+  const info = insertSubmission.run({
+    verify_token: null, ...data, verified_at: data.verify_token ? null : new Date().toISOString().slice(0, 19).replace('T', ' '),
+  });
   return getSubmission(info.lastInsertRowid);
 }
 
@@ -89,28 +120,50 @@ function purgeRejected(days) {
   return rows.map((r) => r.proof_file).filter(Boolean);
 }
 
+// Deletes submissions that were never verified on Discord after `hours` hours
+function purgeUnverified(hours) {
+  const rows = db.prepare(`SELECT id, proof_file FROM submissions
+    WHERE verified_at IS NULL AND status = 'pending' AND created_at < datetime('now', ?)`).all(`-${hours} hours`);
+  const del = db.prepare('DELETE FROM submissions WHERE id = ?');
+  db.transaction(() => rows.forEach((r) => del.run(r.id)))();
+  db.prepare('DELETE FROM verification_codes WHERE expires_at < ?').run(Date.now());
+  return rows.map((r) => r.proof_file).filter(Boolean);
+}
+
 function getSubmission(id) {
   return db.prepare('SELECT * FROM submissions WHERE id = ?').get(id);
+}
+
+// Verified submissions that never reached the moderators (bot was offline)
+function unsentSubmissions() {
+  return db.prepare(`SELECT * FROM submissions WHERE status = 'pending' AND verified_at IS NOT NULL
+    AND discord_message_id IS NULL ORDER BY id`).all();
 }
 
 function setDiscordMessage(id, messageId) {
   db.prepare('UPDATE submissions SET discord_message_id = ? WHERE id = ?').run(messageId, id);
 }
 
-const findPlayer = db.prepare('SELECT id FROM players WHERE name = ?');
-const insertPlayer = db.prepare('INSERT INTO players (name, country) VALUES (?, ?)');
-const updatePlayer = db.prepare('UPDATE players SET country = ? WHERE id = ?');
-function upsertPlayer(name, country) {
+const findPlayer = db.prepare('SELECT id, name, discord_id FROM players WHERE name = ?');
+const insertPlayer = db.prepare('INSERT INTO players (name, country, discord_id) VALUES (?, ?, ?)');
+const updatePlayer = db.prepare('UPDATE players SET country = ?, discord_id = COALESCE(discord_id, ?) WHERE id = ?');
+function upsertPlayer(name, country, discordId = null) {
   const existing = findPlayer.get(name);
-  if (existing) { updatePlayer.run(country, existing.id); return existing.id; }
-  return insertPlayer.run(name, country).lastInsertRowid;
+  if (existing) {
+    if (existing.discord_id && discordId && existing.discord_id !== discordId) {
+      throw new Error(`The player name "${existing.name}" is linked to another Discord account.`);
+    }
+    updatePlayer.run(country, discordId, existing.id);
+    return existing.id;
+  }
+  return insertPlayer.run(name, country, discordId).lastInsertRowid;
 }
 
 const approveTx = db.transaction((id, reviewer) => {
   const sub = getSubmission(id);
   if (!sub) throw new Error('Submission not found');
   if (sub.status !== 'pending') return { sub, changed: false };
-  const playerId = upsertPlayer(sub.player_name, sub.country);
+  const playerId = upsertPlayer(sub.player_name, sub.country, sub.discord_id);
   db.prepare(`UPDATE submissions SET status = 'approved', player_id = ?, reviewed_by = ?, reviewed_at = datetime('now')
               WHERE id = ?`).run(playerId, reviewer, id);
   return { sub: getSubmission(id), changed: true };
@@ -127,6 +180,88 @@ function rejectSubmission(id, reviewer, reason) {
   db.prepare(`UPDATE submissions SET status = 'rejected', reject_reason = ?, reviewed_by = ?, reviewed_at = datetime('now')
               WHERE id = ?`).run(reason || null, reviewer, id);
   return { sub: getSubmission(id), changed: true };
+}
+
+// ---------- Discord verification ----------
+const CODE_TTL = 10 * 60 * 1000;
+const CODE_COOLDOWN = 30 * 1000;
+const MAX_ATTEMPTS = 5;
+
+// Creates a 6-digit code for a Discord user (replaces their previous one)
+function issueCode(discordId, discordName) {
+  const now = Date.now();
+  const last = db.prepare('SELECT created_at FROM verification_codes WHERE discord_id = ?').get(discordId);
+  if (last && now - last.created_at < CODE_COOLDOWN) {
+    return { cooldown: Math.ceil((CODE_COOLDOWN - (now - last.created_at)) / 1000) };
+  }
+  return db.transaction(() => {
+    db.prepare('DELETE FROM verification_codes WHERE discord_id = ? OR expires_at < ?').run(discordId, now);
+    let code;
+    do { code = String(crypto.randomInt(0, 1000000)).padStart(6, '0'); }
+    while (db.prepare('SELECT 1 FROM verification_codes WHERE code = ?').get(code));
+    db.prepare(`INSERT INTO verification_codes (code, discord_id, discord_name, created_at, expires_at)
+                VALUES (?, ?, ?, ?, ?)`).run(code, discordId, discordName, now, now + CODE_TTL);
+    return { code, minutes: CODE_TTL / 60000 };
+  })();
+}
+
+const isImported = (playerId) => !!db.prepare(`SELECT 1 FROM submissions
+  WHERE player_id = ? AND reviewed_by = 'mkwrs.com import' LIMIT 1`).get(playerId);
+
+// Returns an error message if this Discord account may not submit under this player name
+function claimError(playerName, discordId) {
+  const player = findPlayer.get(playerName);
+  if (player && player.discord_id && player.discord_id !== discordId) {
+    return `The player name "${player.name}" is already linked to another Discord account.`;
+  }
+  const own = db.prepare('SELECT name FROM players WHERE discord_id = ?').get(discordId);
+  if (own && own.name.toLowerCase() !== playerName.toLowerCase()) {
+    return `Your Discord account is already linked to the player "${own.name}". Submit your times under that name.`;
+  }
+  if (player && !player.discord_id && isImported(player.id)) {
+    return `"${player.name}" is a world record holder imported from mkwrs.com. If it's you, ask a moderator to link this name to your Discord account.`;
+  }
+  const otherPending = db.prepare(`SELECT 1 FROM submissions WHERE player_name = ? COLLATE NOCASE
+    AND discord_id IS NOT NULL AND discord_id != ? AND status = 'pending' LIMIT 1`).get(playerName, discordId);
+  if (!player && otherPending) return `The player name "${playerName}" is already used by another Discord account.`;
+  return null;
+}
+
+// Checks the code typed on the website and links the submission to the Discord account
+const verifyTx = db.transaction((id, token, code) => {
+  const sub = getSubmission(id);
+  const sameToken = sub && sub.verify_token && token && sub.verify_token.length === token.length
+    && crypto.timingSafeEqual(Buffer.from(sub.verify_token), Buffer.from(token));
+  if (!sameToken) return { status: 404, error: 'Submission not found.' };
+  if (sub.verified_at) return { sub, already: true };
+  if (sub.verify_attempts >= MAX_ATTEMPTS) return { status: 429, error: 'Too many wrong codes. Please submit your time again.' };
+  db.prepare('UPDATE submissions SET verify_attempts = verify_attempts + 1 WHERE id = ?').run(id);
+
+  const row = db.prepare('SELECT * FROM verification_codes WHERE code = ? AND expires_at > ?').get(code, Date.now());
+  if (!row) return { status: 400, error: 'Invalid or expired code. Type /verif again on Discord to get a new one.' };
+  const err = claimError(sub.player_name, row.discord_id);
+  if (err) return { status: 409, error: err };
+
+  db.prepare('DELETE FROM verification_codes WHERE code = ?').run(code);
+  db.prepare(`UPDATE submissions SET verified_at = datetime('now'), discord_id = ?, discord_name = ? WHERE id = ?`)
+    .run(row.discord_id, row.discord_name, id);
+  // Claim an existing player name right away
+  db.prepare('UPDATE players SET discord_id = ? WHERE name = ? AND discord_id IS NULL').run(row.discord_id, sub.player_name);
+  return { sub: getSubmission(id) };
+});
+
+function verifySubmission(id, token, code) {
+  return verifyTx(id, String(token || ''), String(code || ''));
+}
+
+// Moderator command: link a player name to a Discord account
+function linkPlayer(playerName, discordId) {
+  const player = findPlayer.get(playerName);
+  if (!player) return { error: `No player named "${playerName}".` };
+  const other = db.prepare('SELECT name FROM players WHERE discord_id = ? AND id != ?').get(discordId, player.id);
+  if (other) return { error: `This Discord account is already linked to "${other.name}".` };
+  db.prepare('UPDATE players SET discord_id = ? WHERE id = ?').run(discordId, player.id);
+  return { player: player.name };
 }
 
 // ---------- Leaderboards ----------
@@ -236,7 +371,7 @@ function stats() {
   return db.prepare(`SELECT
       (SELECT COUNT(*) FROM players) AS players,
       (SELECT COUNT(*) FROM submissions WHERE status = 'approved') AS approved,
-      (SELECT COUNT(*) FROM submissions WHERE status = 'pending') AS pending,
+      (SELECT COUNT(*) FROM submissions WHERE status = 'pending' AND verified_at IS NOT NULL) AS pending,
       (SELECT COUNT(DISTINCT country) FROM players) AS countries`).get();
 }
 
@@ -248,7 +383,7 @@ function recentRecords(limit = 10) {
 
 module.exports = {
   db, parseTime, formatTime, TRACK_BY_ID,
-  createSubmission, getSubmission, purgeRejected, setDiscordMessage, approveSubmission, rejectSubmission,
+  createSubmission, getSubmission, unsentSubmissions, purgeRejected, purgeUnverified, issueCode, verifySubmission, claimError, linkPlayer, setDiscordMessage, approveSubmission, rejectSubmission,
   trackLeaderboard, worldRecords, playerRanking, countryRanking, regionRanking, playerProfile, searchPlayers,
   stats, recentRecords,
 };

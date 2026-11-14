@@ -3,7 +3,9 @@
 A time trial leaderboard for **Mario Kart 8 Deluxe** (150cc and 200cc, all 96 tracks including the Booster Course Pass).
 
 - Players submit their times through a form (player name, country, track, engine class, time, proof as a **link** or an **uploaded file**).
-- Each submission is posted on **Discord** with two buttons: **✅ Approve** / **❌ Reject** (with an optional reason).
+- After submitting, the player confirms it's them on **Discord**: a tab opens with the server invite, they type `/verif`,
+  the bot DMs them a 6-digit code and they enter it on the site. Their player name is then linked to their Discord account.
+- Each verified submission is posted on **Discord** with two buttons: **✅ Approve** / **❌ Reject** (with an optional reason).
 - Only approved times appear on the leaderboards: **per track**, **players**, **countries** and **world regions**
   (Europe, North America, South America, Asia, Africa, Oceania — deduced automatically from the player's country).
 - Data is stored in a **SQLite** database (`data/leaderboard.db`).
@@ -51,15 +53,35 @@ Interactive buttons require a **bot** (a plain webhook cannot receive button cli
 
 1. Go to <https://discord.com/developers/applications> → **New Application**.
 2. **Bot** tab → **Reset Token** → copy the token into `DISCORD_TOKEN`.
-3. **OAuth2 → URL Generator**: tick `bot`, then the permissions
+3. **OAuth2 → URL Generator**: tick `bot` **and `applications.commands`**, then the permissions
    *View Channels*, *Send Messages*, *Embed Links*, *Attach Files*. Open the generated URL to invite the bot to your server.
 4. In Discord, enable **Developer Mode** (Settings → Advanced), right-click the review channel → **Copy Channel ID** → `DISCORD_CHANNEL_ID`.
    Make this channel **private** (moderators only): it contains unpublished submissions.
 5. (Optional) Right-click the moderator role → **Copy Role ID** → `DISCORD_MOD_ROLE_ID`.
    Without it, anyone with the **Manage Messages** permission can review.
 6. Set `PUBLIC_URL` to the public address of the site (proof files too large for Discord are linked there).
+7. Create a **permanent invite** to your server (Invite people → Edit invite link → Expire after: Never) and put it in `DISCORD_INVITE_URL`.
+   It is opened in a new tab when someone submits a time.
 
-No privileged intent is needed.
+No privileged intent is needed. The slash commands are registered automatically on the server of `DISCORD_CHANNEL_ID` when the bot starts.
+
+### Player verification
+
+![Verification](docs/verify.png)
+
+| Step | What happens |
+|---|---|
+| Submit | The time is saved but **not** sent to the moderators yet. A tab opens on `DISCORD_INVITE_URL` (only until the player's first successful verification). |
+| `/verif` | The bot DMs a 6-digit code, valid 10 minutes (if DMs are closed, the code is shown only to the player in the channel). |
+| Enter the code | The submission is linked to the Discord account and posted in the review channel, with the account shown. |
+| Review | The player receives a DM when the time is approved or rejected. |
+
+Rules: the first verified submission links the player name to the Discord account. Afterwards only that account can submit
+under that name, and one Discord account can only have one player name. Names imported from mkwrs.com are protected:
+a moderator links them with **`/link player:<name> user:<@member>`** (also used to fix any link).
+
+Protections: 5 wrong codes per submission, 20 attempts per IP every 10 minutes, a 30 s cooldown on `/verif`.
+Unverified submissions are deleted after 24 hours. Without a configured bot (local tests), submissions skip verification.
 
 ## Legal pages
 

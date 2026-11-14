@@ -232,11 +232,69 @@ async function viewRegions() {
 }
 
 // ---------- Submission form ----------
+// ---------- Discord verification ----------
+const session = {
+  get(k) { try { return JSON.parse(sessionStorage.getItem(k) || 'null'); } catch { return null; } },
+  set(k, v) { try { sessionStorage.setItem(k, JSON.stringify(v)); } catch { /* ignore */ } },
+  del(k) { try { sessionStorage.removeItem(k); } catch { /* ignore */ } },
+};
+
+function viewVerify(p) {
+  const invite = p.discordInvite || state.meta.legal.discordInvite;
+  $app.innerHTML = `
+    <div class="page-head"><div><h1>Verify it's you</h1><p>Your time <b>${esc(p.time)}</b> as <b>${esc(p.player)}</b> is saved. Confirm it with Discord to send it to the moderators.</p></div></div>
+    <div class="card card-pad form-card verify">
+      <ol class="steps">
+        <li><span class="step-n">1</span><div><b>Join our Discord server</b>
+          <p class="muted">A new tab opened with the invitation. Already a member? Skip this step.</p>
+          ${invite ? `<a class="btn btn-discord" href="${esc(invite)}" target="_blank" rel="noopener">Join the Discord</a>` : ''}</div></li>
+        <li><span class="step-n">2</span><div><b>Type <code>/verif</code> in any channel</b>
+          <p class="muted">The bot sends you a 6-digit code by private message (valid 10 minutes).</p></div></li>
+        <li><span class="step-n">3</span><div><b>Enter the code here</b>
+          <form id="vform" class="code-row" novalidate>
+            <input id="code" class="code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="123456" aria-label="6-digit code">
+            <button class="btn btn-primary" id="vbtn" type="submit">Verify</button>
+          </form></div></li>
+      </ol>
+      <div id="vmsg"></div>
+      <p class="muted small">Your player name will be linked to this Discord account: only you will be able to submit times under it. Unverified submissions are deleted after 24 hours.
+        <a href="#/submit?new=1" id="vcancel">Cancel and submit another time</a></p>
+    </div>`;
+  const input = $app.querySelector('#code');
+  input.focus();
+  input.addEventListener('input', () => { input.value = input.value.replace(/\D/g, '').slice(0, 6); });
+  $app.querySelector('#vcancel').addEventListener('click', () => session.del('pendingVerify'));
+  $app.querySelector('#vform').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = $app.querySelector('#vmsg'); const btn = $app.querySelector('#vbtn');
+    if (!/^\d{6}$/.test(input.value)) { msg.innerHTML = '<div class="alert alert-err">The code has 6 digits.</div>'; return; }
+    btn.disabled = true; btn.textContent = 'Checking…';
+    try {
+      const r = await fetch(`/api/submissions/${p.id}/verify`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: p.token, code: input.value }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error);
+      session.del('pendingVerify');
+      localSet('discordJoined', '1');
+      $app.querySelector('.verify').innerHTML = `
+        <div class="alert alert-ok">✅ Verified as <b>@${esc(data.discordName)}</b>. Your time <b>${esc(p.time)}</b> has been sent to the moderators.
+          You'll get a Discord DM when it's reviewed.</div>
+        <a class="btn btn-primary" href="#/submit?new=1">Submit another time</a>`;
+    } catch (err) {
+      msg.innerHTML = `<div class="alert alert-err">${esc(err.message)}</div>`;
+      btn.disabled = false; btn.textContent = 'Verify';
+    }
+  });
+}
+
 function viewSubmit(params) {
+  const pending = session.get('pendingVerify');
+  if (pending && !params.get('new')) { viewVerify(pending); return; }
   const saved = (() => { try { return JSON.parse(localStorage.getItem('player') || '{}'); } catch { return {}; } })();
   const preTrack = params.get('track') || '';
   $app.innerHTML = `
-    <div class="page-head"><div><h1>Submit a time</h1><p>Your time will be checked by a moderator on Discord before it appears on the leaderboard.</p></div></div>
+    <div class="page-head"><div><h1>Submit a time</h1><p>After sending, you'll confirm it's you on our Discord server with <code>/verif</code>. A moderator then checks your time before it appears on the leaderboard.</p></div></div>
     <form id="form" class="card card-pad form-card" novalidate>
       <div id="msg"></div>
       <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
@@ -264,7 +322,7 @@ function viewSubmit(params) {
           <span id="fileLabel">Drop a screenshot or video here, or click to choose one (max 50 MB)</span></label>
         <div class="hint">Screenshot of the ghost / results screen, or a YouTube, Twitch or X video.</div></div>
       <div class="field"><label for="comment">Comment <span class="muted">(optional)</span></label><textarea id="comment" name="comment" rows="2" maxlength="500" placeholder="Combo used, useful info…"></textarea></div>
-      <div class="notice">Once approved, your <b>player name, country, time and proof</b> are shown publicly on this site. Your submission is sent to our moderators through Discord. See the <a href="#/privacy">Privacy Policy</a>.</div>
+      <div class="notice">Once approved, your <b>player name, country, time and proof</b> are shown publicly on this site. You'll need a Discord account to confirm your submission; it is then sent to our moderators through Discord. See the <a href="#/privacy">Privacy Policy</a>.</div>
       <div class="field"><label class="consent"><input type="checkbox" name="accept_terms" required>
         <span>I confirm this time was set by me, without cheats or modifications, and I accept the <a href="#/terms" target="_blank">Terms of Use</a> and the <a href="#/privacy" target="_blank">Privacy Policy</a>.</span></label></div>
       <button class="btn btn-primary" id="sendBtn" type="submit">Send for review</button>
@@ -306,15 +364,29 @@ function viewSubmit(params) {
     if (!/^\d{1,2}:[0-5]\d[.,]\d{3}$/.test(fd.get('time').trim())) return error('Invalid time. Expected format: 1:45.123');
     if (!form.accept_terms.checked) return error('You must accept the Terms of Use and the Privacy Policy.');
     btn.disabled = true; btn.textContent = 'Sending…';
+    // Open the Discord invite in a new tab. The tab must be opened during the click (popup blockers),
+    // so it starts blank and is pointed at the invite once the submission is accepted.
+    const invite = state.meta.legal.discordInvite;
+    const tab = invite && !localGet('discordJoined', '') ? window.open('', '_blank') : null;
     try {
       const r = await fetch('/api/submissions', { method: 'POST', body: fd });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error);
       localSet('player', JSON.stringify({ player_name: fd.get('player_name'), country: fd.get('country') }));
+      if (data.verifyRequired) {
+        if (tab) { tab.opener = null; tab.location.href = invite; }
+        const pending = { id: data.id, token: data.token, time: data.time, player: data.player, discordInvite: data.discordInvite };
+        session.set('pendingVerify', pending);
+        viewVerify(pending);
+        window.scrollTo(0, 0);
+        return;
+      }
+      if (tab) tab.close();
       msg.innerHTML = `<div class="alert alert-ok">✅ Time <b>${esc(data.time)}</b> sent (submission #${data.id}). It will appear on the leaderboard once a moderator approves it.</div>`;
       form.time.value = ''; form.proof_url.value = ''; fileInput.value = ''; showFile(); form.comment.value = '';
       msg.scrollIntoView({ behavior: 'smooth', block: 'center' });
     } catch (err) {
+      if (tab) tab.close();
       error(err.message);
     } finally { btn.disabled = false; btn.textContent = 'Send for review'; }
   });
@@ -349,6 +421,7 @@ function viewTerms() {
       <li>the proof you provide is genuine, unedited and shows the submitted time;</li>
       <li>you have the right to share the proof (e.g. you made the video or screenshot yourself) and it does not infringe anyone else's rights.</li>
     </ul>
+    <p>Each submission must be confirmed with a Discord account, using the <code>/verif</code> command on our Discord server. The first verified submission links your player name to your Discord account: afterwards, only this account can submit times under that name, and each Discord account can only be linked to one player name. To change this link, contact a moderator.</p>
     <p>Only one player name may be used per person. Do not submit times under someone else's name.</p>
     <h2>5. Moderation</h2>
     <p>Every submission is reviewed by volunteer moderators before publication. Moderators may approve or reject any submission at their sole discretion, may ask for additional proof, and may remove an approved time or a player from the leaderboard at any time if a rule appears to have been broken. Moderation decisions are not subject to any compensation.</p>
@@ -390,23 +463,25 @@ function viewPrivacy() {
       <li>track, engine class and time;</li>
       <li>your proof: a link or an uploaded image/video — note that a proof may contain your in-game name, your voice or your image if you include them;</li>
       <li>an optional comment;</li>
+      <li>your <b>Discord user ID and username</b>, when you confirm the submission with <code>/verif</code>;</li>
       <li>the date of submission, and the review result (approved/rejected, moderator name, optional reason).</li>
     </ul>
     <p><b>Technical data:</b> your IP address is used temporarily, in memory only, to limit the number of submissions (anti-spam). It is never written to our database and is forgotten within 10 minutes. Our hosting provider may keep standard server logs for security purposes.</p>
-    <p>We do not ask for your email address, real name or any account, and we do not use any analytics or advertising tools.</p>
+    <p>We do not ask for your email address or real name, and we do not use any analytics or advertising tools.</p>
     <h2>3. Purposes and legal bases</h2>
     <div class="table-wrap"><table>
       <thead><tr><th>Purpose</th><th>Legal basis</th></tr></thead>
       <tbody>
         <tr><td>Reviewing your submission and publishing it on the leaderboards</td><td>Performance of the service you request by accepting the Terms of Use (Art. 6(1)(b) GDPR)</td></tr>
+        <tr><td>Checking that you own your player name (Discord verification) and sending you the result of the review by Discord direct message</td><td>Performance of the service you request (Art. 6(1)(b) GDPR) and our legitimate interest in preventing impersonation (Art. 6(1)(f) GDPR)</td></tr>
         <tr><td>Preventing spam and abuse</td><td>Our legitimate interest in keeping the Site working (Art. 6(1)(f) GDPR)</td></tr>
         <tr><td>Answering your requests</td><td>Our legitimate interest / legal obligations</td></tr>
       </tbody></table></div>
     <h2>4. What is public</h2>
-    <p>Once a time is approved, the following are <b>publicly visible</b> on the Site: player name, country and world region, times, rankings, points and proof (link or file). Rejected and pending submissions are never public.</p>
+    <p>Once a time is approved, the following are <b>publicly visible</b> on the Site: player name, country and world region, times, rankings, points and proof (link or file). Rejected and pending submissions are never public. The link between your player name and your Discord account is <b>not</b> displayed on the Site; it is only visible to the moderators.</p>
     <h2>5. Who receives your data</h2>
     <ul>
-      <li><b>Moderators</b>: each submission is sent to a private channel of our Discord server, where volunteer moderators review it. Discord is operated by Discord Inc. (United States); data transferred to it is covered by the EU-US Data Privacy Framework and/or the European Commission's Standard Contractual Clauses. See <a href="https://discord.com/privacy" target="_blank" rel="noopener">Discord's privacy policy</a>.</li>
+      <li><b>Moderators</b>: each submission is sent, with the Discord account that confirmed it, to a private channel of our Discord server, where volunteer moderators review it. Our Discord bot also sends you direct messages (your verification code and the result of the review). Discord is operated by Discord Inc. (United States); data transferred to it is covered by the EU-US Data Privacy Framework and/or the European Commission's Standard Contractual Clauses. See <a href="https://discord.com/privacy" target="_blank" rel="noopener">Discord's privacy policy</a>.</li>
       <li><b>Our hosting provider</b>: ${v(L.hostName)}, which stores the Site and its database.</li>
     </ul>
     <p>Your data is never sold or used for advertising.</p>
@@ -414,13 +489,15 @@ function viewPrivacy() {
     <ul>
       <li><b>Approved times</b>: kept as long as they are displayed on the leaderboard, or until you ask for their deletion.</li>
       <li><b>Rejected submissions</b>: automatically deleted, including any uploaded file, ${L.rejectedRetentionDays} days after the review.</li>
-      <li><b>Pending submissions</b>: kept until they are reviewed.</li>
+      <li><b>Pending submissions</b>: kept until they are reviewed. Submissions that are never confirmed on Discord are deleted, including any uploaded file, after 24 hours.</li>
+      <li><b>Verification codes</b>: valid for 10 minutes, then deleted.</li>
+      <li><b>Link between your player name and your Discord account</b>: kept as long as your player profile exists.</li>
       <li>The Discord review message may remain in the moderators' private channel; it is deleted on request.</li>
     </ul>
     <h2>7. Cookies and local storage</h2>
     <p>The Site does not use cookies or trackers. It uses your browser's local storage, only on your device, to remember your player name and country (to pre-fill the form) and your preferred engine class. You can clear it at any time from your browser settings. Fonts and flags are hosted on our own server: no third-party service is contacted while you browse, except external proof links you choose to open.</p>
     <h2>8. Your rights</h2>
-    <p>You have the right to access, rectify and erase your data, to restrict or object to its processing, and to data portability. To exercise them — for example to change your player name or remove all your times — contact ${mail(L.contactEmail)}, indicating your player name. As we have no accounts, we may ask you to prove that you own the player name (e.g. through the channel used to publish your proof). We answer within one month.</p>
+    <p>You have the right to access, rectify and erase your data, to restrict or object to its processing, and to data portability. To exercise them — for example to change your player name or remove all your times — contact ${mail(L.contactEmail)}, indicating your player name. As we have no accounts, we may ask you to prove that you own the player name, for example by contacting us from the Discord account linked to it. We answer within one month.</p>
     <p>You also have the right to lodge a complaint with a supervisory authority, such as the CNIL in France (<a href="https://www.cnil.fr" target="_blank" rel="noopener">cnil.fr</a>) or the authority of your country of residence.</p>
     <h2>9. Security</h2>
     <p>We take reasonable measures to protect your data (restricted access to the server and database, moderation limited to authorised Discord members). No system is perfectly secure, however.</p>
