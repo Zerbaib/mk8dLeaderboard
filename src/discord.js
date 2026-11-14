@@ -9,13 +9,13 @@ const { COUNTRY_BY_CODE } = require('./countries');
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
-const MOD_ROLE_ID = process.env.DISCORD_MOD_ROLE_ID; // optionnel
+const MOD_ROLE_ID = process.env.DISCORD_MOD_ROLE_ID; // optional
 const PUBLIC_URL = (process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, '');
 const UPLOAD_DIR = path.join(__dirname, '..', 'uploads');
-const MAX_ATTACH = 8 * 1024 * 1024; // au-delà, on envoie un lien plutôt que le fichier
+const MAX_ATTACH = 8 * 1024 * 1024; // above this size we send a link instead of the file
 
 const COLORS = { pending: 0xf5b301, approved: 0x2ecc71, rejected: 0xe74c3c };
-const LABELS = { pending: '⏳ En attente de vérification', approved: '✅ Validé', rejected: '❌ Refusé' };
+const LABELS = { pending: '⏳ Pending review', approved: '✅ Approved', rejected: '❌ Rejected' };
 
 let client = null;
 let ready = false;
@@ -36,24 +36,24 @@ function buildEmbed(sub) {
     .setTitle(`🏁 ${track ? track.name : sub.track_id} — ${sub.cc}cc`)
     .setColor(COLORS[sub.status])
     .addFields(
-      { name: 'Joueur', value: sub.player_name, inline: true },
-      { name: 'Temps', value: `**${store.formatTime(sub.time_ms)}**`, inline: true },
-      { name: 'Cylindrée', value: `${sub.cc}cc`, inline: true },
-      { name: 'Pays', value: `${flag(sub.country)} ${country ? country.name : sub.country}`, inline: true },
-      { name: 'Région', value: sub.region || '—', inline: true },
-      { name: 'Coupe', value: track ? track.cup : '—', inline: true },
+      { name: 'Player', value: sub.player_name, inline: true },
+      { name: 'Time', value: `**${store.formatTime(sub.time_ms)}**`, inline: true },
+      { name: 'Class', value: `${sub.cc}cc`, inline: true },
+      { name: 'Country', value: `${flag(sub.country)} ${country ? country.name : sub.country}`, inline: true },
+      { name: 'Region', value: sub.region || '—', inline: true },
+      { name: 'Cup', value: track ? track.cup : '—', inline: true },
     )
-    .setFooter({ text: `Soumission #${sub.id} • ${LABELS[sub.status]}` })
+    .setFooter({ text: `Submission #${sub.id} • ${LABELS[sub.status]}` })
     .setTimestamp(new Date(`${sub.created_at}Z`));
 
   const link = proofLink(sub);
-  if (link) embed.addFields({ name: 'Preuve', value: link });
-  if (sub.comment) embed.addFields({ name: 'Commentaire', value: sub.comment.slice(0, 1000) });
+  if (link) embed.addFields({ name: 'Proof', value: link });
+  if (sub.comment) embed.addFields({ name: 'Comment', value: sub.comment.slice(0, 1000) });
   if (sub.status !== 'pending') {
-    embed.addFields({ name: 'Vérifié par', value: sub.reviewed_by || '—', inline: true });
+    embed.addFields({ name: 'Reviewed by', value: sub.reviewed_by || '—', inline: true });
   }
   if (sub.status === 'rejected' && sub.reject_reason) {
-    embed.addFields({ name: 'Motif du refus', value: sub.reject_reason.slice(0, 1000) });
+    embed.addFields({ name: 'Rejection reason', value: sub.reject_reason.slice(0, 1000) });
   }
   if (sub.proof_file && /\.(png|jpe?g|gif|webp)$/i.test(sub.proof_file)) {
     embed.setImage(`attachment://${sub.proof_file}`);
@@ -63,16 +63,16 @@ function buildEmbed(sub) {
 
 function buildButtons(sub, disabled = false) {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`mk8:approve:${sub.id}`).setLabel('Valider').setEmoji('✅')
+    new ButtonBuilder().setCustomId(`mk8:approve:${sub.id}`).setLabel('Approve').setEmoji('✅')
       .setStyle(ButtonStyle.Success).setDisabled(disabled),
-    new ButtonBuilder().setCustomId(`mk8:reject:${sub.id}`).setLabel('Refuser').setEmoji('❌')
+    new ButtonBuilder().setCustomId(`mk8:reject:${sub.id}`).setLabel('Reject').setEmoji('❌')
       .setStyle(ButtonStyle.Danger).setDisabled(disabled),
   );
 }
 
 async function notifySubmission(sub) {
   if (!ready) {
-    console.warn(`[discord] Bot non connecté : la soumission #${sub.id} reste en attente.`);
+    console.warn(`[discord] Bot not connected: submission #${sub.id} stays pending.`);
     return;
   }
   const channel = await client.channels.fetch(CHANNEL_ID);
@@ -97,7 +97,7 @@ function canModerate(interaction) {
 
 async function refreshMessage(interaction, sub) {
   const embed = buildEmbed(sub);
-  // On conserve la pièce jointe déjà présente sur le message
+  // Keep the attachment already on the message
   if (!interaction.message.attachments.size) embed.setImage(null);
   await interaction.update({ embeds: [embed], components: [] });
 }
@@ -109,7 +109,7 @@ async function handleInteraction(interaction) {
   const subId = Number(rawId);
 
   if (!canModerate(interaction)) {
-    await interaction.reply({ content: "⛔ Tu n'as pas la permission de vérifier les chronos.", flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: '⛔ You are not allowed to review submissions.', flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -118,7 +118,7 @@ async function handleInteraction(interaction) {
   if (interaction.isButton() && action === 'approve') {
     const { sub, changed } = store.approveSubmission(subId, reviewer);
     if (!changed) {
-      await interaction.reply({ content: `Cette soumission a déjà été traitée (${LABELS[sub.status]}).`, flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: `This submission has already been reviewed (${LABELS[sub.status]}).`, flags: MessageFlags.Ephemeral });
       return;
     }
     await refreshMessage(interaction, sub);
@@ -128,12 +128,12 @@ async function handleInteraction(interaction) {
   if (interaction.isButton() && action === 'reject') {
     const sub = store.getSubmission(subId);
     if (!sub || sub.status !== 'pending') {
-      await interaction.reply({ content: 'Cette soumission a déjà été traitée.', flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: 'This submission has already been reviewed.', flags: MessageFlags.Ephemeral });
       return;
     }
-    const modal = new ModalBuilder().setCustomId(`mk8:rejectmodal:${subId}`).setTitle(`Refuser la soumission #${subId}`)
+    const modal = new ModalBuilder().setCustomId(`mk8:rejectmodal:${subId}`).setTitle(`Reject submission #${subId}`)
       .addComponents(new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId('reason').setLabel('Motif du refus (optionnel)')
+        new TextInputBuilder().setCustomId('reason').setLabel('Rejection reason (optional)')
           .setStyle(TextInputStyle.Paragraph).setRequired(false).setMaxLength(500),
       ));
     await interaction.showModal(modal);
@@ -144,7 +144,7 @@ async function handleInteraction(interaction) {
     const reason = interaction.fields.getTextInputValue('reason')?.trim();
     const { sub, changed } = store.rejectSubmission(subId, reviewer, reason);
     if (!changed) {
-      await interaction.reply({ content: 'Cette soumission a déjà été traitée.', flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: 'This submission has already been reviewed.', flags: MessageFlags.Ephemeral });
       return;
     }
     await refreshMessage(interaction, sub);
@@ -153,19 +153,19 @@ async function handleInteraction(interaction) {
 
 async function start() {
   if (!TOKEN || !CHANNEL_ID) {
-    console.warn('[discord] DISCORD_TOKEN ou DISCORD_CHANNEL_ID manquant : bot désactivé.');
+    console.warn('[discord] DISCORD_TOKEN or DISCORD_CHANNEL_ID missing: bot disabled.');
     return;
   }
   client = new Client({ intents: [GatewayIntentBits.Guilds] });
   client.once(Events.ClientReady, (c) => {
     ready = true;
-    console.log(`[discord] Connecté en tant que ${c.user.tag}`);
+    console.log(`[discord] Logged in as ${c.user.tag}`);
   });
   client.on(Events.InteractionCreate, (interaction) => {
     handleInteraction(interaction).catch((err) => {
-      console.error('[discord] Erreur interaction :', err);
+      console.error('[discord] Interaction error:', err);
       if (interaction.isRepliable() && !interaction.replied) {
-        interaction.reply({ content: '⚠️ Une erreur est survenue.', flags: MessageFlags.Ephemeral }).catch(() => {});
+        interaction.reply({ content: '⚠️ Something went wrong.', flags: MessageFlags.Ephemeral }).catch(() => {});
       }
     });
   });

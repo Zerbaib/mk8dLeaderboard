@@ -1,3 +1,9 @@
+@font-face { font-family: Inter; font-style: normal; font-weight: 400; font-display: swap; src: url(/fonts/inter/inter-latin-400-normal.woff2) format('woff2'); }
+@font-face { font-family: Inter; font-style: normal; font-weight: 500; font-display: swap; src: url(/fonts/inter/inter-latin-500-normal.woff2) format('woff2'); }
+@font-face { font-family: Inter; font-style: normal; font-weight: 600; font-display: swap; src: url(/fonts/inter/inter-latin-600-normal.woff2) format('woff2'); }
+@font-face { font-family: Inter; font-style: normal; font-weight: 700; font-display: swap; src: url(/fonts/inter/inter-latin-700-normal.woff2) format('woff2'); }
+@font-face { font-family: 'Russo One'; font-style: normal; font-weight: 400; font-display: swap; src: url(/fonts/russo-one/russo-one-latin-400-normal.woff2) format('woff2'); }
+
 :root {
   --bg: #0d1017;
   --bg-2: #141924;
@@ -187,3 +193,23 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .hide-sm { display: none; }
   .hero-main h1 { font-size: 30px; }
 }
+
+/* ---------- Legal pages ---------- */
+.footer-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 20px; margin-bottom: 14px; }
+.footer-links a { color: var(--text); text-decoration: none; font-weight: 600; }
+.footer-links a:hover { color: var(--yellow); }
+.legal { max-width: 780px; margin: 0 auto 40px; padding: 28px 32px; }
+.legal h2 { font: 400 19px 'Russo One', sans-serif; margin: 28px 0 8px; }
+.legal h2:first-child { margin-top: 0; }
+.legal p, .legal li { color: #cdd4e2; }
+.legal ul { padding-left: 20px; }
+.legal li { margin: 4px 0; }
+.legal a { color: var(--blue); }
+.legal table { margin: 8px 0 4px; }
+.legal td, .legal th { white-space: normal; vertical-align: top; padding: 10px 12px; }
+.legal .ph { background: rgba(255, 201, 40, .14); color: var(--yellow); padding: 0 4px; border-radius: 4px; }
+.consent { display: flex; gap: 10px; align-items: flex-start; font-weight: 500; font-size: 14px; color: #cdd4e2; }
+.consent input { width: 18px; height: 18px; flex: none; margin: 2px 0 0; accent-color: var(--red); }
+.consent a { color: var(--blue); }
+.notice { font-size: 13px; color: var(--muted); background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-bottom: 16px; }
+@media (max-width: 860px) { .legal { padding: 20px 18px; } }

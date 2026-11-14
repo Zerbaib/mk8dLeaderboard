@@ -43,7 +43,7 @@ CREATE INDEX IF NOT EXISTS idx_sub_board ON submissions (track_id, cc, status, t
 CREATE INDEX IF NOT EXISTS idx_sub_player ON submissions (player_id, status);
 `);
 
-// ---------- Utilitaires temps ----------
+// ---------- Time helpers ----------
 function parseTime(str) {
   const m = /^\s*(\d{1,2}):([0-5]\d)[.,:](\d{3})\s*$/.exec(String(str || ''));
   if (!m) return null;
@@ -58,7 +58,7 @@ function formatTime(ms) {
   return `${min}:${String(sec).padStart(2, '0')}.${String(milli).padStart(3, '0')}`;
 }
 
-// ---------- Soumissions ----------
+// ---------- Submissions ----------
 const insertSubmission = db.prepare(`
   INSERT INTO submissions (player_name, country, region, track_id, cc, time_ms, proof_url, proof_file, comment)
   VALUES (@player_name, @country, @region, @track_id, @cc, @time_ms, @proof_url, @proof_file, @comment)
@@ -67,6 +67,15 @@ const insertSubmission = db.prepare(`
 function createSubmission(data) {
   const info = insertSubmission.run(data);
   return getSubmission(info.lastInsertRowid);
+}
+
+// Deletes rejected submissions older than `days` days and returns their proof files to remove
+function purgeRejected(days) {
+  const rows = db.prepare(`SELECT id, proof_file FROM submissions
+    WHERE status = 'rejected' AND reviewed_at < datetime('now', ?)`).all(`-${days} days`);
+  const del = db.prepare('DELETE FROM submissions WHERE id = ?');
+  db.transaction(() => rows.forEach((r) => del.run(r.id)))();
+  return rows.map((r) => r.proof_file).filter(Boolean);
 }
 
 function getSubmission(id) {
@@ -88,7 +97,7 @@ function upsertPlayer(name, country, region) {
 
 const approveTx = db.transaction((id, reviewer) => {
   const sub = getSubmission(id);
-  if (!sub) throw new Error('Soumission introuvable');
+  if (!sub) throw new Error('Submission not found');
   if (sub.status !== 'pending') return { sub, changed: false };
   const playerId = upsertPlayer(sub.player_name, sub.country, sub.region);
   db.prepare(`UPDATE submissions SET status = 'approved', player_id = ?, reviewed_by = ?, reviewed_at = datetime('now')
@@ -102,15 +111,15 @@ function approveSubmission(id, reviewer) {
 
 function rejectSubmission(id, reviewer, reason) {
   const sub = getSubmission(id);
-  if (!sub) throw new Error('Soumission introuvable');
+  if (!sub) throw new Error('Submission not found');
   if (sub.status !== 'pending') return { sub, changed: false };
   db.prepare(`UPDATE submissions SET status = 'rejected', reject_reason = ?, reviewed_by = ?, reviewed_at = datetime('now')
               WHERE id = ?`).run(reason || null, reviewer, id);
   return { sub: getSubmission(id), changed: true };
 }
 
-// ---------- Classements ----------
-// Meilleur temps validé par joueur, par circuit et par cylindrée
+// ---------- Leaderboards ----------
+// Best approved time per player, track and engine class
 const BEST_CTE = `
   WITH best AS (
     SELECT s.*, ROW_NUMBER() OVER (PARTITION BY s.player_id, s.track_id, s.cc ORDER BY s.time_ms, s.reviewed_at) AS rn
@@ -129,7 +138,7 @@ const BEST_CTE = `
   )
 `;
 
-// Points : 1000 pour le record, proportionnel au temps du record sinon
+// Points: 1000 for the record, otherwise proportional to the record time
 const POINTS_EXPR = 'CAST(ROUND(1000.0 * wr_ms / time_ms) AS INTEGER)';
 
 function filters({ country, region }, params, alias = '') {
@@ -233,7 +242,7 @@ function recentRecords(limit = 10) {
 
 module.exports = {
   db, parseTime, formatTime, TRACK_BY_ID,
-  createSubmission, getSubmission, setDiscordMessage, approveSubmission, rejectSubmission,
+  createSubmission, getSubmission, purgeRejected, setDiscordMessage, approveSubmission, rejectSubmission,
   trackLeaderboard, worldRecords, playerRanking, countryRanking, regionRanking, playerProfile, searchPlayers,
   knownRegions, stats, recentRecords,
 };
