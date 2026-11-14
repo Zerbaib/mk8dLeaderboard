@@ -76,6 +76,7 @@ What the code does to match the Privacy Policy:
 | `DISCORD_TOKEN` | Bot token |
 | `DISCORD_CHANNEL_ID` | Channel where submissions are posted for review |
 | `DISCORD_MOD_ROLE_ID` | Role allowed to review (optional) |
+| `DISCORD_BOT_STATUS` | Bot status text (default `🚀 go on mk8dxtimes.fr`) |
 | `DISCORD_INVITE_URL` | Public invite shown on the Terms page (optional) |
 | `LEGAL_OWNER_NAME`, `LEGAL_OWNER_ADDRESS`, `LEGAL_CONTACT_EMAIL` | Publisher information |
 | `LEGAL_HOST_NAME`, `LEGAL_HOST_ADDRESS` | Hosting provider information |

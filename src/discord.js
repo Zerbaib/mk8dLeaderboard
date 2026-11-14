@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const {
   Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
-  ModalBuilder, TextInputBuilder, TextInputStyle, AttachmentBuilder, Events, PermissionFlagsBits, MessageFlags,
+  ModalBuilder, TextInputBuilder, TextInputStyle, AttachmentBuilder, Events, PermissionFlagsBits, MessageFlags, ActivityType,
 } = require('discord.js');
 const store = require('./db');
 const { COUNTRY_BY_CODE, REGION_BY_ID } = require('./countries');
@@ -10,6 +10,8 @@ const { COUNTRY_BY_CODE, REGION_BY_ID } = require('./countries');
 const TOKEN = process.env.DISCORD_TOKEN;
 const CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
 const MOD_ROLE_ID = process.env.DISCORD_MOD_ROLE_ID; // optional
+// Bot status (custom status shown under the bot's name)
+const BOT_STATUS = process.env.DISCORD_BOT_STATUS || '🚀 go on mk8dxtimes.fr';
 const PUBLIC_URL = (process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, '');
 const UPLOAD_DIR = path.join(__dirname, '..', 'uploads');
 const MAX_ATTACH = 8 * 1024 * 1024; // above this size we send a link instead of the file
@@ -156,7 +158,11 @@ async function start() {
     console.warn('[discord] DISCORD_TOKEN or DISCORD_CHANNEL_ID missing: bot disabled.');
     return;
   }
-  client = new Client({ intents: [GatewayIntentBits.Guilds] });
+  client = new Client({
+    intents: [GatewayIntentBits.Guilds],
+    // Set at login and re-sent automatically on every reconnection
+    presence: { status: 'online', activities: [{ type: ActivityType.Custom, name: 'Custom Status', state: BOT_STATUS }] },
+  });
   client.once(Events.ClientReady, (c) => {
     ready = true;
     console.log(`[discord] Logged in as ${c.user.tag}`);
