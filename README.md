@@ -59,6 +59,14 @@ Slower times are never announced.
 2. Put it in `.env`: `DISCORD_RECORDS_WEBHOOK_URL=https://discord.com/api/webhooks/...`
 
 Announcements are sent when a moderator clicks **Approve**, and by `npm run import-wrs -- --announce`.
+
+To test it without touching the database:
+
+- `npm run test-webhook` posts a "webhook connected" message;
+- `npm run test-webhook -- --record` posts an example record announcement, marked `[TEST]`.
+
+When the site starts, the log shows `[webhook] Record announcements: enabled` (or why it is disabled),
+and each announcement is logged as `[webhook] Announced: ...`.
 Messages are queued 2 s apart to respect Discord's rate limit, and never ping anyone.
 
 ## Discord bot setup

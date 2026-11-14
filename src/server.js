@@ -6,6 +6,7 @@ const express = require('express');
 const multer = require('multer');
 const store = require('./db');
 const discord = require('./discord');
+const webhook = require('./webhook');
 const { TRACKS, TRACK_BY_ID, CUPS } = require('./tracks');
 const { COUNTRIES, COUNTRY_BY_CODE, REGIONS, REGION_BY_ID } = require('./countries');
 
@@ -203,5 +204,6 @@ setInterval(purge, 60 * 60 * 1000).unref();
 
 app.listen(PORT, () => {
   console.log(`🏁 MK8DX Leaderboard running on http://localhost:${PORT}`);
+  console.log(`[webhook] Record announcements: ${webhook.isEnabled() ? 'enabled' : 'disabled (DISCORD_RECORDS_WEBHOOK_URL not set)'}`);
   discord.start().catch((e) => console.error('[discord] Could not connect:', e.message));
 });

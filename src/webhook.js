@@ -11,7 +11,7 @@ const flag = (code) => (code && code.length === 2
   ? String.fromCodePoint(...[...code.toUpperCase()].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65)) : '');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function buildPayload(sub, { previous, tied }) {
+function buildPayload(sub, { previous, tied }, { test = false } = {}) {
   const track = store.TRACK_BY_ID[sub.track_id];
   const trackName = track ? track.name : sub.track_id;
   const time = store.formatTime(sub.time_ms);
@@ -35,7 +35,7 @@ function buildPayload(sub, { previous, tied }) {
   if (proof) fields.push({ name: 'Proof', value: proof });
 
   const embed = {
-    title: `${tied ? '🤝 Record tied' : '🏆 New record'} — ${trackName} ${sub.cc}cc`,
+    title: `${test ? '[TEST] ' : ''}${tied ? '🤝 Record tied' : '🏆 New record'} — ${trackName} ${sub.cc}cc`,
     color: tied ? 0x2d8cff : 0xffc928,
     fields,
     footer: { text: `${track ? track.cup : ''} • ${COUNTRY_BY_CODE[sub.country]?.name || sub.country}` },
@@ -76,7 +76,10 @@ async function drain() {
   running = true;
   while (queue.length) {
     const { payload, resolve } = queue.shift();
-    try { await post(payload); } catch (e) { console.error('[webhook] Could not announce record:', e.message); }
+    try {
+      await post(payload);
+      console.log(`[webhook] Announced: ${payload.embeds[0].title}`);
+    } catch (e) { console.error('[webhook] Could not announce record:', e.message); }
     resolve();
     if (queue.length) await sleep(2000);
   }
@@ -84,12 +87,22 @@ async function drain() {
 }
 
 // Returns a promise resolved once the message has been sent (or failed)
-function announceRecord(sub, record) {
+function announceRecord(sub, record, options) {
   if (!WEBHOOK_URL || !record) return Promise.resolve();
   return new Promise((resolve) => {
-    queue.push({ payload: buildPayload(sub, record), resolve });
+    queue.push({ payload: buildPayload(sub, record, options), resolve });
     drain();
   });
 }
 
-module.exports = { announceRecord, buildPayload, isEnabled: () => Boolean(WEBHOOK_URL) };
+// Sends a test message; throws with the reason if it fails
+async function sendTest() {
+  if (!WEBHOOK_URL) throw new Error('DISCORD_RECORDS_WEBHOOK_URL is not set in .env');
+  await post({
+    username: SITE_NAME,
+    ...(IS_PUBLIC ? { avatar_url: `${PUBLIC_URL}/logo.png` } : {}),
+    embeds: [{ title: '✅ Records webhook connected', description: 'New records will be announced in this channel.', color: 0x2ecc71 }],
+  });
+}
+
+module.exports = { announceRecord, buildPayload, sendTest, isEnabled: () => Boolean(WEBHOOK_URL) };
