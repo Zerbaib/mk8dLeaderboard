@@ -17,8 +17,6 @@
     </pattern>
     <clipPath id="face"><circle cx="256" cy="236" r="122"/></clipPath>
   </defs>
-  <rect width="512" height="512" fill="url(#bg)"/>
-  <circle cx="256" cy="236" r="230" fill="url(#glow)"/>
   <!-- speed lines -->
   <g stroke="#e5352b" stroke-linecap="round" opacity=".9">
     <line x1="58" y1="196" x2="104" y2="196" stroke-width="12"/>
@@ -42,6 +40,6 @@
   <line x1="256" y1="236" x2="256" y2="138" stroke="#e5352b" stroke-width="5" stroke-linecap="round" opacity=".0"/>
   <circle cx="256" cy="236" r="16" fill="#e5352b" stroke="#0f131c" stroke-width="5"/>
   <!-- wordmark -->
-  <text x="256" y="434" text-anchor="middle" font-family="'Russo One', sans-serif" font-size="70" fill="#eef1f7" letter-spacing="2">MK8DX</text>
-  <text x="256" y="474" text-anchor="middle" font-family="'Russo One', sans-serif" font-size="30" fill="#ffc928" letter-spacing="12">TIMES</text>
+  <text x="256" y="434" text-anchor="middle" font-family="'Russo One', sans-serif" font-size="70" fill="#eef1f7" letter-spacing="2" stroke="#0f131c" stroke-width="12" stroke-linejoin="round" paint-order="stroke">MK8DX</text>
+  <text x="256" y="474" text-anchor="middle" font-family="'Russo One', sans-serif" font-size="30" fill="#ffc928" letter-spacing="12" stroke="#0f131c" stroke-width="8" stroke-linejoin="round" paint-order="stroke">TIMES</text>
 </svg>

@@ -17,8 +17,6 @@
     </pattern>
     <clipPath id="face"><circle cx="256" cy="236" r="122"/></clipPath>
   </defs>
-  <rect width="512" height="512" fill="url(#bg)"/>
-  <circle cx="256" cy="256" r="240" fill="url(#glow)"/>
   <g transform="translate(-9 -17) scale(1.25)">
   <!-- speed lines -->
   <g stroke="#e5352b" stroke-linecap="round" opacity=".9">
