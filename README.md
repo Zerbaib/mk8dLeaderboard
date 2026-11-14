@@ -34,6 +34,17 @@ npm start              # http://localhost:3000
 
 To try it with fake data: `npm run seed` (do not run it in production).
 
+## Importing the current world records
+
+`npm run import-wrs` downloads the current 150cc and 200cc world records from [mkwrs.com](https://mkwrs.com/mk8dx/)
+and adds them to the database as approved times (player, country, time, date of the record, video link as proof).
+
+- `npm run import-wrs -- --dry-run` shows what would be added without changing anything.
+- Running it again only adds new records, so you can run it regularly to follow new WRs.
+- Imported times are marked as reviewed by `mkwrs.com import`.
+
+The data belongs to mkwrs.com: credit them and ask their maintainers before importing regularly.
+
 ## Discord bot setup
 
 Interactive buttons require a **bot** (a plain webhook cannot receive button clicks).

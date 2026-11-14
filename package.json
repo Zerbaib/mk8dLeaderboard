@@ -7,7 +7,8 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "seed": "node scripts/seed.js",
-    "delete-player": "node scripts/delete-player.js"
+    "delete-player": "node scripts/delete-player.js",
+    "import-wrs": "node scripts/import-mkwrs.js"
   },
   "repository": {
     "type": "git",

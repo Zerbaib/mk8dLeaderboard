@@ -443,6 +443,7 @@ function viewLegal() {
     <h2>User content</h2>
     <p>Times and proofs are submitted by players and reviewed by volunteer moderators before publication. To report content that you believe is unlawful or infringes your rights, contact ${mail(L.contactEmail)} with the link to the page concerned and the reason for your request; it will be handled promptly.</p>
     <h2>Credits</h2>
+    <p>World record data: <a href="https://mkwrs.com/mk8dx/" target="_blank" rel="noopener">mkwrs.com</a>.</p>
     <p>Flags: <a href="https://github.com/lipis/flag-icons" target="_blank" rel="noopener">flag-icons</a> (MIT licence). Fonts: Inter and Russo One (SIL Open Font License).</p>
     <p>See also the <a href="#/terms">Terms of Use</a> and the <a href="#/privacy">Privacy Policy</a>.</p>`);
 }
