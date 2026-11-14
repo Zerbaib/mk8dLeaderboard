@@ -19,6 +19,7 @@ const flag = (code) => (code ? `<img class="flag" src="/flags/${code.toLowerCase
 const countryName = (code) => state.meta.countries.find((c) => c.code === code)?.name || code;
 const track = (id) => state.meta.tracks.find((t) => t.id === id);
 const regionName = (id) => state.meta.regions.find((r) => r.id === id)?.name || 'Other';
+const DISCORD_ICON = '<svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M20.32 4.37a19.8 19.8 0 0 0-4.89-1.52.07.07 0 0 0-.08.04c-.21.38-.44.87-.6 1.25a18.27 18.27 0 0 0-5.49 0 12.6 12.6 0 0 0-.62-1.25.08.08 0 0 0-.08-.04 19.74 19.74 0 0 0-4.89 1.52.07.07 0 0 0-.03.03C.53 9.05-.32 13.58.1 18.06a.08.08 0 0 0 .03.06 19.9 19.9 0 0 0 5.99 3.03.08.08 0 0 0 .08-.03c.46-.63.87-1.3 1.23-1.99a.08.08 0 0 0-.04-.11 13.1 13.1 0 0 1-1.87-.89.08.08 0 0 1-.01-.13l.37-.29a.07.07 0 0 1 .08-.01c3.93 1.79 8.18 1.79 12.06 0a.07.07 0 0 1 .08.01l.37.29a.08.08 0 0 1-.01.13c-.6.35-1.22.65-1.87.89a.08.08 0 0 0-.04.11c.36.7.78 1.36 1.23 1.99a.08.08 0 0 0 .08.03 19.84 19.84 0 0 0 6-3.03.08.08 0 0 0 .03-.06c.5-5.18-.84-9.67-3.55-13.66a.06.06 0 0 0-.03-.03zM8.02 15.33c-1.18 0-2.16-1.08-2.16-2.42 0-1.33.96-2.42 2.16-2.42 1.21 0 2.18 1.1 2.16 2.42 0 1.34-.96 2.42-2.16 2.42zm7.97 0c-1.18 0-2.15-1.08-2.15-2.42 0-1.33.95-2.42 2.15-2.42 1.21 0 2.18 1.1 2.16 2.42 0 1.34-.95 2.42-2.16 2.42z"/></svg>';
 const REGION_ICONS = { europe: '🌍', africa: '🌍', 'north-america': '🌎', 'south-america': '🌎', asia: '🌏', oceania: '🌏' };
 const rank = (r) => `<span class="rank rank-${r <= 3 ? r : 'x'}">${r}</span>`;
 const playerLink = (id, name) => `<a class="player-link" href="#/player/${id}">${esc(name)}</a>`;
@@ -68,6 +69,7 @@ async function viewHome() {
         <div class="toolbar">
           <a class="btn btn-primary" href="#/submit">Submit a time</a>
           <a class="btn" href="#/tracks">Browse tracks</a>
+          ${state.meta.legal.discordInvite ? `<a class="btn btn-discord" href="${esc(state.meta.legal.discordInvite)}" target="_blank" rel="noopener">${DISCORD_ICON}Join the Discord</a>` : ''}
         </div>
       </div>
       <div class="stats">
@@ -247,7 +249,7 @@ function viewVerify(p) {
       <ol class="steps">
         <li><span class="step-n">1</span><div><b>Join our Discord server</b>
           <p class="muted">A new tab opened with the invitation. Already a member? Skip this step.</p>
-          ${invite ? `<a class="btn btn-discord" href="${esc(invite)}" target="_blank" rel="noopener">Join the Discord</a>` : ''}</div></li>
+          ${invite ? `<a class="btn btn-discord" href="${esc(invite)}" target="_blank" rel="noopener">${DISCORD_ICON}Join the Discord</a>` : ''}</div></li>
         <li><span class="step-n">2</span><div><b>Type <code>/verif</code> in any channel</b>
           <p class="muted">The bot sends you a 6-digit code by private message (valid 10 minutes).</p></div></li>
         <li><span class="step-n">3</span><div><b>Enter the code here</b>

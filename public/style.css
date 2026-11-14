@@ -52,6 +52,7 @@ a { color: inherit; }
 }
 .brand { display: flex; align-items: center; gap: 8px; text-decoration: none; font-family: 'Russo One', sans-serif; font-size: 20px; letter-spacing: .5px; }
 .brand b { color: var(--yellow); font-weight: 400; margin-left: 2px; }
+.brand-logo { width: 36px; height: 36px; display: block; }
 .nav { display: flex; gap: 4px; flex: 1; }
 .nav a { text-decoration: none; padding: 8px 14px; border-radius: 999px; color: var(--muted); font-weight: 600; }
 .nav a:hover { color: var(--text); background: var(--card); }
@@ -227,3 +228,4 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .code-input { width: 190px; font: 400 26px 'Russo One', sans-serif; letter-spacing: .3em; text-align: center; padding: 8px 10px; }
 .small { font-size: 13px; }
 .small a { color: var(--blue); }
+.btn-icon { width: 18px; height: 18px; flex: none; }
