@@ -18,6 +18,8 @@ const ordinal = (n) => { const s = ['th', 'st', 'nd', 'rd']; const v = n % 100; 
 const flag = (code) => (code ? `<img class="flag" src="/flags/${code.toLowerCase()}.svg" alt="${esc(code)}" loading="lazy">` : '');
 const countryName = (code) => state.meta.countries.find((c) => c.code === code)?.name || code;
 const track = (id) => state.meta.tracks.find((t) => t.id === id);
+const regionName = (id) => state.meta.regions.find((r) => r.id === id)?.name || 'Other';
+const REGION_ICONS = { europe: '🌍', africa: '🌍', 'north-america': '🌎', 'south-america': '🌎', asia: '🌏', oceania: '🌏' };
 const rank = (r) => `<span class="rank rank-${r <= 3 ? r : 'x'}">${r}</span>`;
 const playerLink = (id, name) => `<a class="player-link" href="#/player/${id}">${esc(name)}</a>`;
 const proofHref = (r) => r.proof_url || (r.proof_file ? `/uploads/${r.proof_file}` : null);
@@ -39,16 +41,16 @@ function countryOptions(selected, placeholder = 'All countries') {
   return `<option value="">${placeholder}</option>${state.meta.countries.map((c) =>
     `<option value="${c.code}" ${c.code === selected ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}`;
 }
-function regionSelect(regions, region, country) {
-  return `<select id="region" ${country ? '' : 'disabled'}><option value="">All regions</option>${regions
-    .map((r) => `<option ${r === region ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select>`;
+function regionSelect(region) {
+  return `<select id="region" aria-label="Region"><option value="">All regions</option>${state.meta.regions
+    .map((r) => `<option value="${r.id}" ${r.id === region ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>`;
 }
-function bindFilters(base, country) {
+function bindFilters(base, country, region) {
   const update = (c, r) => {
     const p = new URLSearchParams(); if (c) p.set('country', c); if (r) p.set('region', r);
     location.hash = `${base}${p.toString() ? `?${p}` : ''}`;
   };
-  $app.querySelector('#country').addEventListener('change', (e) => update(e.target.value, ''));
+  $app.querySelector('#country').addEventListener('change', (e) => update(e.target.value, region));
   $app.querySelector('#region').addEventListener('change', (e) => update(country, e.target.value));
 }
 const empty = (title, text) => `<div class="card empty"><b>${title}</b>${text}</div>`;
@@ -119,27 +121,26 @@ async function viewTrack(id, params) {
   const country = params.get('country') || '';
   const region = params.get('region') || '';
   const rows = await api(`/api/leaderboard/track/${id}?${new URLSearchParams({ cc: state.cc, country, region })}`);
-  const regions = country ? await api(`/api/regions?country=${country}`) : [];
   const top = rows.slice(0, 3);
   $app.innerHTML = `
     <div class="page-head"><div><p><a class="player-link" href="#/tracks">← Tracks</a> · ${esc(t.cup)}</p><h1>${esc(t.name)}</h1></div>
-      <div class="toolbar"><select id="country" aria-label="Country">${countryOptions(country)}</select>${regionSelect(regions, region, country)}${ccToggle()}</div></div>
+      <div class="toolbar"><select id="country" aria-label="Country">${countryOptions(country)}</select>${regionSelect(region)}${ccToggle()}</div></div>
     ${rows.length >= 3 ? `<div class="podium">${[1, 0, 2].map((i) => `<div class="card ${i === 0 ? 'p1' : ''}">
         ${rank(i + 1)}<div class="name">${flag(top[i].country)}${playerLink(top[i].player_id, top[i].name)}</div>
         <div class="time">${fmt(top[i].time_ms)}</div><div class="gap">${gap(top[i].time_ms, top[0].time_ms) || 'Record'}</div></div>`).join('')}</div>` : ''}
     ${rows.length ? `<div class="card table-wrap"><table>
       <thead><tr><th>#</th><th>Player</th><th class="hide-sm">Region</th><th class="num">Time</th><th class="num hide-sm">Gap</th><th class="num">Points</th><th>Proof</th></tr></thead>
       <tbody>${rows.map((r, i) => `<tr>
-        <td>${rank(country ? i + 1 : r.world_rank)}</td>
-        <td>${flag(r.country)}${playerLink(r.player_id, r.name)}${country ? ` <span class="pill">${ordinal(r.world_rank)} worldwide</span>` : ''}</td>
-        <td class="hide-sm muted">${esc(r.region || '—')}</td>
+        <td>${rank(country || region ? i + 1 : r.world_rank)}</td>
+        <td>${flag(r.country)}${playerLink(r.player_id, r.name)}${country || region ? ` <span class="pill">${ordinal(r.world_rank)} worldwide</span>` : ''}</td>
+        <td class="hide-sm muted">${esc(regionName(r.region))}</td>
         <td class="num time">${fmt(r.time_ms)}</td>
         <td class="num gap hide-sm">${gap(r.time_ms, rows[0].time_ms)}</td>
         <td class="num">${num(r.points)}</td>
         <td>${proofCell(r)}</td></tr>`).join('')}</tbody></table></div>`
-    : empty('No approved times', `No ${state.cc}cc time yet${country ? ' for this filter' : ''}. <a href="#/submit?track=${id}">Submit yours!</a>`)}`;
+    : empty('No approved times', `No ${state.cc}cc time yet${country || region ? ' for this filter' : ''}. <a href="#/submit?track=${id}">Submit yours!</a>`)}`;
   bindCc(() => route());
-  bindFilters(`#/track/${id}`, country);
+  bindFilters(`#/track/${id}`, country, region);
 }
 
 // ---------- Players ----------
@@ -147,22 +148,21 @@ async function viewPlayers(params) {
   const country = params.get('country') || '';
   const region = params.get('region') || '';
   const rows = await api(`/api/leaderboard/players?${new URLSearchParams({ cc: state.cc, country, region })}`);
-  const regions = country ? await api(`/api/regions?country=${country}`) : [];
   $app.innerHTML = `
     <div class="page-head"><div><h1>Player rankings</h1><p>Sum of points across all tracks (1,000 points per record). <a class="player-link" href="#/points">How points work</a></p></div>
-      <div class="toolbar"><select id="country" aria-label="Country">${countryOptions(country)}</select>${regionSelect(regions, region, country)}${ccToggle()}</div></div>
+      <div class="toolbar"><select id="country" aria-label="Country">${countryOptions(country)}</select>${regionSelect(region)}${ccToggle()}</div></div>
     ${rows.length ? `<div class="card table-wrap"><table>
       <thead><tr><th>#</th><th>Player</th><th class="hide-sm">Region</th><th class="num">Tracks</th><th class="num">Records</th><th class="num">Points</th></tr></thead>
       <tbody>${rows.map((r, i) => `<tr>
         <td>${rank(i + 1)}</td>
         <td>${flag(r.country)}${playerLink(r.player_id, r.name)}</td>
-        <td class="hide-sm muted">${esc(r.region || '—')}</td>
+        <td class="hide-sm muted">${esc(regionName(r.region))}</td>
         <td class="num">${r.tracks}/96</td>
         <td class="num">${recordsPill(r.records)}</td>
         <td class="num time">${num(r.points)}</td></tr>`).join('')}</tbody></table></div>`
     : empty('No ranked players', 'No approved times for this filter.')}`;
   bindCc(() => route());
-  bindFilters('#/players', country);
+  bindFilters('#/players', country, region);
 }
 
 async function viewPlayer(id) {
@@ -173,7 +173,7 @@ async function viewPlayer(id) {
   $app.innerHTML = `
     <div class="page-head"><div class="profile-head">
         <div class="avatar">${esc(player.name[0].toUpperCase())}</div>
-        <div><h1>${esc(player.name)}</h1><p>${flag(player.country)}${esc(countryName(player.country))}${player.region ? ` · ${esc(player.region)}` : ''}</p></div>
+        <div><h1>${esc(player.name)}</h1><p>${flag(player.country)}${esc(countryName(player.country))}· ${esc(regionName(player.region))}</p></div>
       </div>${ccToggle()}</div>
     <div class="stats" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px">
       <div class="card stat"><b>${num(pts)}</b><span>${state.cc}cc points</span></div>
@@ -200,10 +200,11 @@ async function viewCountries() {
   $app.innerHTML = `
     <div class="page-head"><div><h1>Country rankings</h1><p>Sum of the points of every player from each country.</p></div>${ccToggle()}</div>
     ${rows.length ? `<div class="card table-wrap"><table>
-      <thead><tr><th>#</th><th>Country</th><th class="num">Players</th><th class="num">Records</th><th class="hide-sm">Top player</th><th class="num">Points</th></tr></thead>
+      <thead><tr><th>#</th><th>Country</th><th class="hide-sm">Region</th><th class="num">Players</th><th class="num">Records</th><th class="hide-sm">Top player</th><th class="num">Points</th></tr></thead>
       <tbody>${rows.map((r, i) => `<tr>
         <td>${rank(i + 1)}</td>
         <td><a class="player-link" href="#/players?country=${r.country}">${flag(r.country)}${esc(countryName(r.country))}</a></td>
+        <td class="hide-sm muted">${esc(regionName(state.meta.countries.find((c) => c.code === r.country)?.region))}</td>
         <td class="num">${r.players}</td>
         <td class="num">${recordsPill(r.records)}</td>
         <td class="hide-sm">${esc(r.top_player)}</td>
@@ -212,26 +213,22 @@ async function viewCountries() {
   bindCc(viewCountries);
 }
 
-async function viewRegions(params) {
-  const country = params.get('country') || '';
-  const rows = await api(`/api/leaderboard/regions?${new URLSearchParams({ cc: state.cc, country })}`);
+async function viewRegions() {
+  const rows = await api(`/api/leaderboard/regions?cc=${state.cc}`);
   $app.innerHTML = `
-    <div class="page-head"><div><h1>Region rankings</h1><p>Sum of the points of every player from each region.</p></div>
-      <div class="toolbar"><select id="country" aria-label="Country">${countryOptions(country)}</select>${ccToggle()}</div></div>
+    <div class="page-head"><div><h1>Region rankings</h1><p>Europe vs the Americas vs the rest of the world: sum of the points of every player from each region.</p></div>${ccToggle()}</div>
     ${rows.length ? `<div class="card table-wrap"><table>
-      <thead><tr><th>#</th><th>Region</th><th class="hide-sm">Country</th><th class="num">Players</th><th class="num">Records</th><th class="hide-sm">Top player</th><th class="num">Points</th></tr></thead>
+      <thead><tr><th>#</th><th>Region</th><th class="num">Countries</th><th class="num">Players</th><th class="num">Records</th><th class="hide-sm">Top player</th><th class="num">Points</th></tr></thead>
       <tbody>${rows.map((r, i) => `<tr>
         <td>${rank(i + 1)}</td>
-        <td>${r.region === '—' ? '<span class="muted">Not specified</span>'
-          : `<a class="player-link" href="#/players?country=${r.country}&region=${encodeURIComponent(r.region)}">${esc(r.region)}</a>`}</td>
-        <td class="hide-sm">${flag(r.country)}${esc(countryName(r.country))}</td>
+        <td><a class="player-link" href="#/players?region=${r.region}"><span class="region-icon">${REGION_ICONS[r.region] || '🌐'}</span>${esc(regionName(r.region))}</a></td>
+        <td class="num">${r.countries}</td>
         <td class="num">${r.players}</td>
         <td class="num">${recordsPill(r.records)}</td>
-        <td class="hide-sm">${esc(r.top_player)}</td>
+        <td class="hide-sm">${flag(r.top_country)}${esc(r.top_player)}</td>
         <td class="num time">${num(r.points)}</td></tr>`).join('')}</tbody></table></div>`
-    : empty('No ranked regions', 'No approved times for this filter.')}`;
-  bindCc(() => route());
-  $app.querySelector('#country').addEventListener('change', (e) => { location.hash = `#/regions${e.target.value ? `?country=${e.target.value}` : ''}`; });
+    : empty('No ranked regions', 'No approved times yet.')}`;
+  bindCc(viewRegions);
 }
 
 // ---------- Submission form ----------
@@ -245,10 +242,9 @@ function viewSubmit(params) {
       <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
       <div class="row">
         <div class="field"><label for="player_name">Player name</label><input id="player_name" name="player_name" required maxlength="32" value="${esc(saved.player_name || '')}" placeholder="Your nickname" autocomplete="nickname"></div>
-        <div class="field"><label for="countrySel">Country</label><select id="countrySel" name="country" required>${countryOptions(saved.country || '', 'Select your country')}</select></div>
+        <div class="field"><label for="countrySel">Country</label><select id="countrySel" name="country" required>${countryOptions(saved.country || '', 'Select your country')}</select>
+          <div class="hint" id="regionHint"></div></div>
       </div>
-      <div class="field"><label for="region">Region <span class="muted">(optional)</span></label>
-        <input id="region" name="region" list="regions" maxlength="60" value="${esc(saved.region || '')}" placeholder="e.g. California, Île-de-France…"><datalist id="regions"></datalist></div>
       <div class="row">
         <div class="field"><label for="track_id">Track</label><select id="track_id" name="track_id" required>
           <option value="">Select a track</option>
@@ -268,7 +264,7 @@ function viewSubmit(params) {
           <span id="fileLabel">Drop a screenshot or video here, or click to choose one (max 50 MB)</span></label>
         <div class="hint">Screenshot of the ghost / results screen, or a YouTube, Twitch or X video.</div></div>
       <div class="field"><label for="comment">Comment <span class="muted">(optional)</span></label><textarea id="comment" name="comment" rows="2" maxlength="500" placeholder="Combo used, useful info…"></textarea></div>
-      <div class="notice">Once approved, your <b>player name, country, region, time and proof</b> are shown publicly on this site. Your submission is sent to our moderators through Discord. See the <a href="#/privacy">Privacy Policy</a>.</div>
+      <div class="notice">Once approved, your <b>player name, country, time and proof</b> are shown publicly on this site. Your submission is sent to our moderators through Discord. See the <a href="#/privacy">Privacy Policy</a>.</div>
       <div class="field"><label class="consent"><input type="checkbox" name="accept_terms" required>
         <span>I confirm this time was set by me, without cheats or modifications, and I accept the <a href="#/terms" target="_blank">Terms of Use</a> and the <a href="#/privacy" target="_blank">Privacy Policy</a>.</span></label></div>
       <button class="btn btn-primary" id="sendBtn" type="submit">Send for review</button>
@@ -276,11 +272,11 @@ function viewSubmit(params) {
 
   const form = $app.querySelector('#form');
   const countrySel = form.querySelector('#countrySel');
-  const loadRegions = async () => {
-    const list = countrySel.value ? await api(`/api/regions?country=${countrySel.value}`) : [];
-    form.querySelector('#regions').innerHTML = list.map((r) => `<option value="${esc(r)}">`).join('');
+  const showRegion = () => {
+    const c = state.meta.countries.find((x) => x.code === countrySel.value);
+    form.querySelector('#regionHint').textContent = c ? `Region: ${regionName(c.region)}` : '';
   };
-  countrySel.addEventListener('change', loadRegions); loadRegions();
+  countrySel.addEventListener('change', showRegion); showRegion();
 
   form.querySelectorAll('#ccSeg button').forEach((b) => b.addEventListener('click', () => {
     form.querySelectorAll('#ccSeg button').forEach((x) => x.classList.toggle('on', x === b));
@@ -314,7 +310,7 @@ function viewSubmit(params) {
       const r = await fetch('/api/submissions', { method: 'POST', body: fd });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error);
-      localSet('player', JSON.stringify({ player_name: fd.get('player_name'), country: fd.get('country'), region: fd.get('region') }));
+      localSet('player', JSON.stringify({ player_name: fd.get('player_name'), country: fd.get('country') }));
       msg.innerHTML = `<div class="alert alert-ok">✅ Time <b>${esc(data.time)}</b> sent (submission #${data.id}). It will appear on the leaderboard once a moderator approves it.</div>`;
       form.time.value = ''; form.proof_url.value = ''; fileInput.value = ''; showFile(); form.comment.value = '';
       msg.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -390,7 +386,7 @@ function viewPrivacy() {
     <h2>2. Data we collect</h2>
     <p><b>When you submit a time</b> (all provided by you):</p>
     <ul>
-      <li>player name, country and (optionally) region;</li>
+      <li>player name and country (your world region, e.g. Europe, is deduced from your country);</li>
       <li>track, engine class and time;</li>
       <li>your proof: a link or an uploaded image/video — note that a proof may contain your in-game name, your voice or your image if you include them;</li>
       <li>an optional comment;</li>
@@ -407,7 +403,7 @@ function viewPrivacy() {
         <tr><td>Answering your requests</td><td>Our legitimate interest / legal obligations</td></tr>
       </tbody></table></div>
     <h2>4. What is public</h2>
-    <p>Once a time is approved, the following are <b>publicly visible</b> on the Site: player name, country, region, times, rankings, points and proof (link or file). Rejected and pending submissions are never public.</p>
+    <p>Once a time is approved, the following are <b>publicly visible</b> on the Site: player name, country and world region, times, rankings, points and proof (link or file). Rejected and pending submissions are never public.</p>
     <h2>5. Who receives your data</h2>
     <ul>
       <li><b>Moderators</b>: each submission is sent to a private channel of our Discord server, where volunteer moderators review it. Discord is operated by Discord Inc. (United States); data transferred to it is covered by the EU-US Data Privacy Framework and/or the European Commission's Standard Contractual Clauses. See <a href="https://discord.com/privacy" target="_blank" rel="noopener">Discord's privacy policy</a>.</li>
@@ -422,7 +418,7 @@ function viewPrivacy() {
       <li>The Discord review message may remain in the moderators' private channel; it is deleted on request.</li>
     </ul>
     <h2>7. Cookies and local storage</h2>
-    <p>The Site does not use cookies or trackers. It uses your browser's local storage, only on your device, to remember your player name, country, region (to pre-fill the form) and your preferred engine class. You can clear it at any time from your browser settings. Fonts and flags are hosted on our own server: no third-party service is contacted while you browse, except external proof links you choose to open.</p>
+    <p>The Site does not use cookies or trackers. It uses your browser's local storage, only on your device, to remember your player name and country (to pre-fill the form) and your preferred engine class. You can clear it at any time from your browser settings. Fonts and flags are hosted on our own server: no third-party service is contacted while you browse, except external proof links you choose to open.</p>
     <h2>8. Your rights</h2>
     <p>You have the right to access, rectify and erase your data, to restrict or object to its processing, and to data portability. To exercise them — for example to change your player name or remove all your times — contact ${mail(L.contactEmail)}, indicating your player name. As we have no accounts, we may ask you to prove that you own the player name (e.g. through the channel used to publish your proof). We answer within one month.</p>
     <p>You also have the right to lodge a complaint with a supervisory authority, such as the CNIL in France (<a href="https://www.cnil.fr" target="_blank" rel="noopener">cnil.fr</a>) or the authority of your country of residence.</p>
@@ -465,7 +461,8 @@ function viewPoints() {
     <h2>Rankings</h2>
     <ul>
       <li><b>Players</b>: sum of your points on all tracks — being fast <i>and</i> playing many tracks both pay off.</li>
-      <li><b>Countries / regions</b>: sum of the points of all players from that country or region.</li>
+      <li><b>Countries</b>: sum of the points of all players from that country.</li>
+      <li><b>Regions</b> (Europe, North America, South America, Asia, Africa, Oceania): sum of the points of all players from that part of the world. Your region is deduced from your country.</li>
     </ul>
     <p>When a new record is set, everyone's points on that track are recalculated.</p>`);
 }
@@ -486,7 +483,7 @@ async function route() {
     else if (section === 'players') await viewPlayers(params);
     else if (section === 'player') await viewPlayer(parts[1]);
     else if (section === 'countries') await viewCountries();
-    else if (section === 'regions') await viewRegions(params);
+    else if (section === 'regions') await viewRegions();
     else if (section === 'submit') viewSubmit(params);
     else if (section === 'terms') viewTerms();
     else if (section === 'privacy') viewPrivacy();

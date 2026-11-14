@@ -5,7 +5,7 @@ const {
   ModalBuilder, TextInputBuilder, TextInputStyle, AttachmentBuilder, Events, PermissionFlagsBits, MessageFlags,
 } = require('discord.js');
 const store = require('./db');
-const { COUNTRY_BY_CODE } = require('./countries');
+const { COUNTRY_BY_CODE, REGION_BY_ID } = require('./countries');
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
@@ -40,7 +40,7 @@ function buildEmbed(sub) {
       { name: 'Time', value: `**${store.formatTime(sub.time_ms)}**`, inline: true },
       { name: 'Class', value: `${sub.cc}cc`, inline: true },
       { name: 'Country', value: `${flag(sub.country)} ${country ? country.name : sub.country}`, inline: true },
-      { name: 'Region', value: sub.region || '—', inline: true },
+      { name: 'Region', value: REGION_BY_ID[country?.region]?.name || '—', inline: true },
       { name: 'Cup', value: track ? track.cup : '—', inline: true },
     )
     .setFooter({ text: `Submission #${sub.id} • ${LABELS[sub.status]}` })

@@ -2,6 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const Database = require('better-sqlite3');
 const { TRACKS, TRACK_BY_ID } = require('./tracks');
+const { COUNTRIES } = require('./countries');
 
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'leaderboard.db');
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
@@ -15,7 +16,6 @@ CREATE TABLE IF NOT EXISTS players (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   name       TEXT NOT NULL UNIQUE COLLATE NOCASE,
   country    TEXT NOT NULL,
-  region     TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -24,7 +24,6 @@ CREATE TABLE IF NOT EXISTS submissions (
   player_name        TEXT NOT NULL,
   player_id          INTEGER REFERENCES players(id),
   country            TEXT NOT NULL,
-  region             TEXT,
   track_id           TEXT NOT NULL,
   cc                 INTEGER NOT NULL CHECK (cc IN (150, 200)),
   time_ms            INTEGER NOT NULL,
@@ -41,7 +40,19 @@ CREATE TABLE IF NOT EXISTS submissions (
 
 CREATE INDEX IF NOT EXISTS idx_sub_board ON submissions (track_id, cc, status, time_ms);
 CREATE INDEX IF NOT EXISTS idx_sub_player ON submissions (player_id, status);
+
+-- Country -> world region lookup (rebuilt at every start from src/countries.js)
+CREATE TABLE IF NOT EXISTS country_regions (
+  code   TEXT PRIMARY KEY,
+  region TEXT NOT NULL
+);
 `);
+
+db.transaction(() => {
+  db.prepare('DELETE FROM country_regions').run();
+  const ins = db.prepare('INSERT INTO country_regions (code, region) VALUES (?, ?)');
+  COUNTRIES.forEach((c) => ins.run(c.code, c.region));
+})();
 
 // ---------- Time helpers ----------
 function parseTime(str) {
@@ -60,8 +71,8 @@ function formatTime(ms) {
 
 // ---------- Submissions ----------
 const insertSubmission = db.prepare(`
-  INSERT INTO submissions (player_name, country, region, track_id, cc, time_ms, proof_url, proof_file, comment)
-  VALUES (@player_name, @country, @region, @track_id, @cc, @time_ms, @proof_url, @proof_file, @comment)
+  INSERT INTO submissions (player_name, country, track_id, cc, time_ms, proof_url, proof_file, comment)
+  VALUES (@player_name, @country, @track_id, @cc, @time_ms, @proof_url, @proof_file, @comment)
 `);
 
 function createSubmission(data) {
@@ -87,19 +98,19 @@ function setDiscordMessage(id, messageId) {
 }
 
 const findPlayer = db.prepare('SELECT id FROM players WHERE name = ?');
-const insertPlayer = db.prepare('INSERT INTO players (name, country, region) VALUES (?, ?, ?)');
-const updatePlayer = db.prepare('UPDATE players SET country = ?, region = ? WHERE id = ?');
-function upsertPlayer(name, country, region) {
+const insertPlayer = db.prepare('INSERT INTO players (name, country) VALUES (?, ?)');
+const updatePlayer = db.prepare('UPDATE players SET country = ? WHERE id = ?');
+function upsertPlayer(name, country) {
   const existing = findPlayer.get(name);
-  if (existing) { updatePlayer.run(country, region, existing.id); return existing.id; }
-  return insertPlayer.run(name, country, region).lastInsertRowid;
+  if (existing) { updatePlayer.run(country, existing.id); return existing.id; }
+  return insertPlayer.run(name, country).lastInsertRowid;
 }
 
 const approveTx = db.transaction((id, reviewer) => {
   const sub = getSubmission(id);
   if (!sub) throw new Error('Submission not found');
   if (sub.status !== 'pending') return { sub, changed: false };
-  const playerId = upsertPlayer(sub.player_name, sub.country, sub.region);
+  const playerId = upsertPlayer(sub.player_name, sub.country);
   db.prepare(`UPDATE submissions SET status = 'approved', player_id = ?, reviewed_by = ?, reviewed_at = datetime('now')
               WHERE id = ?`).run(playerId, reviewer, id);
   return { sub: getSubmission(id), changed: true };
@@ -127,8 +138,10 @@ const BEST_CTE = `
   ),
   pb AS (
     SELECT b.id, b.player_id, b.track_id, b.cc, b.time_ms, b.proof_url, b.proof_file, b.reviewed_at,
-           p.name, p.country, p.region
-    FROM best b JOIN players p ON p.id = b.player_id WHERE b.rn = 1
+           p.name, p.country, COALESCE(cr.region, 'other') AS region
+    FROM best b JOIN players p ON p.id = b.player_id
+    LEFT JOIN country_regions cr ON cr.code = p.country
+    WHERE b.rn = 1
   ),
   scored AS (
     SELECT pb.*,
@@ -144,7 +157,7 @@ const POINTS_EXPR = 'CAST(ROUND(1000.0 * wr_ms / time_ms) AS INTEGER)';
 function filters({ country, region }, params, alias = '') {
   const clauses = [];
   if (country) { clauses.push(`${alias}country = @country`); params.country = country; }
-  if (region) { clauses.push(`${alias}region = @region COLLATE NOCASE`); params.region = region; }
+  if (region) { clauses.push(`${alias}region = @region`); params.region = region; }
   return clauses;
 }
 
@@ -182,20 +195,17 @@ function countryRanking({ cc }) {
     FROM per_player pp GROUP BY country ORDER BY points DESC`).all({ cc });
 }
 
-function regionRanking({ cc, country }) {
-  const params = { cc };
-  const countryClause = country ? 'AND country = @country' : '';
-  if (country) params.country = country;
+function regionRanking({ cc }) {
   return db.prepare(`${BEST_CTE},
     per_player AS (
-      SELECT player_id, name, country, COALESCE(NULLIF(region, ''), '—') AS region, SUM(${POINTS_EXPR}) AS points,
+      SELECT player_id, name, country, region, SUM(${POINTS_EXPR}) AS points,
              SUM(CASE WHEN world_rank = 1 THEN 1 ELSE 0 END) AS records
-      FROM scored WHERE cc = @cc ${countryClause} GROUP BY player_id
+      FROM scored WHERE cc = @cc GROUP BY player_id
     )
-    SELECT country, region, COUNT(*) AS players, SUM(points) AS points, SUM(records) AS records,
-           (SELECT name FROM per_player p2 WHERE p2.country = pp.country AND p2.region = pp.region
-            ORDER BY points DESC LIMIT 1) AS top_player
-    FROM per_player pp GROUP BY country, region ORDER BY points DESC`).all(params);
+    SELECT region, COUNT(*) AS players, COUNT(DISTINCT country) AS countries, SUM(points) AS points, SUM(records) AS records,
+           (SELECT name FROM per_player p2 WHERE p2.region = pp.region ORDER BY points DESC LIMIT 1) AS top_player,
+           (SELECT country FROM per_player p2 WHERE p2.region = pp.region ORDER BY points DESC LIMIT 1) AS top_country
+    FROM per_player pp GROUP BY region ORDER BY points DESC`).all({ cc });
 }
 
 function worldRecords({ cc }) {
@@ -205,7 +215,8 @@ function worldRecords({ cc }) {
 }
 
 function playerProfile(playerId) {
-  const player = db.prepare('SELECT * FROM players WHERE id = ?').get(playerId);
+  const player = db.prepare(`SELECT p.id, p.name, p.country, p.created_at, COALESCE(cr.region, 'other') AS region
+    FROM players p LEFT JOIN country_regions cr ON cr.code = p.country WHERE p.id = ?`).get(playerId);
   if (!player) return null;
   const records = db.prepare(`${BEST_CTE}
     SELECT id, track_id, cc, time_ms, proof_url, proof_file, reviewed_at, world_rank, wr_ms, ${POINTS_EXPR} AS points,
@@ -217,13 +228,8 @@ function playerProfile(playerId) {
 }
 
 function searchPlayers(q) {
-  return db.prepare('SELECT id, name, country, region FROM players WHERE name LIKE ? ORDER BY name LIMIT 20')
+  return db.prepare('SELECT id, name, country FROM players WHERE name LIKE ? ORDER BY name LIMIT 20')
     .all(`%${q}%`);
-}
-
-function knownRegions(country) {
-  return db.prepare(`SELECT DISTINCT region FROM players WHERE country = ? AND region IS NOT NULL AND region != ''
-                     ORDER BY region`).all(country).map((r) => r.region);
 }
 
 function stats() {
@@ -244,5 +250,5 @@ module.exports = {
   db, parseTime, formatTime, TRACK_BY_ID,
   createSubmission, getSubmission, purgeRejected, setDiscordMessage, approveSubmission, rejectSubmission,
   trackLeaderboard, worldRecords, playerRanking, countryRanking, regionRanking, playerProfile, searchPlayers,
-  knownRegions, stats, recentRecords,
+  stats, recentRecords,
 };

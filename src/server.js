@@ -7,7 +7,7 @@ const multer = require('multer');
 const store = require('./db');
 const discord = require('./discord');
 const { TRACKS, TRACK_BY_ID, CUPS } = require('./tracks');
-const { COUNTRIES, COUNTRY_BY_CODE, REGION_SUGGESTIONS } = require('./countries');
+const { COUNTRIES, COUNTRY_BY_CODE, REGIONS, REGION_BY_ID } = require('./countries');
 
 const PORT = Number(process.env.PORT || 3000);
 const UPLOAD_DIR = path.join(__dirname, '..', 'uploads');
@@ -71,14 +71,7 @@ const clean = (v, max = 100) => String(v || '').trim().replace(/\s+/g, ' ').slic
 
 // ---------- Metadata ----------
 app.get('/api/meta', (req, res) => {
-  res.json({ tracks: TRACKS, cups: CUPS, countries: COUNTRIES, regionSuggestions: REGION_SUGGESTIONS, legal: LEGAL });
-});
-
-app.get('/api/regions', (req, res) => {
-  const country = clean(req.query.country, 2).toUpperCase();
-  const known = store.knownRegions(country);
-  const merged = [...new Set([...(REGION_SUGGESTIONS[country] || []), ...known])].sort((a, b) => a.localeCompare(b, 'fr'));
-  res.json(merged);
+  res.json({ tracks: TRACKS, cups: CUPS, countries: COUNTRIES, regions: REGIONS, legal: LEGAL });
 });
 
 // ---------- Submissions ----------
@@ -95,7 +88,6 @@ app.post('/api/submissions', (req, res) => {
 
     const playerName = clean(b.player_name, 32);
     const country = clean(b.country, 2).toUpperCase();
-    const region = clean(b.region, 60) || null;
     const trackId = clean(b.track_id, 60);
     const cc = Number(b.cc);
     const timeMs = store.parseTime(b.time);
@@ -115,7 +107,7 @@ app.post('/api/submissions', (req, res) => {
     }
 
     const sub = store.createSubmission({
-      player_name: playerName, country, region, track_id: trackId, cc, time_ms: timeMs,
+      player_name: playerName, country, track_id: trackId, cc, time_ms: timeMs,
       proof_url: proofUrl, proof_file: req.file ? req.file.filename : null, comment,
     });
 
@@ -137,7 +129,7 @@ app.get('/api/submissions/:id', (req, res) => {
 // ---------- Leaderboards ----------
 const filt = (q) => ({
   country: clean(q.country, 2).toUpperCase() || undefined,
-  region: clean(q.region, 60) || undefined,
+  region: REGION_BY_ID[clean(q.region, 30)] ? clean(q.region, 30) : undefined,
 });
 
 app.get('/api/leaderboard/track/:trackId', (req, res) => {
@@ -154,7 +146,7 @@ app.get('/api/leaderboard/countries', (req, res) => {
 });
 
 app.get('/api/leaderboard/regions', (req, res) => {
-  res.json(store.regionRanking({ cc: ccOf(req.query.cc), country: filt(req.query).country }));
+  res.json(store.regionRanking({ cc: ccOf(req.query.cc) }));
 });
 
 app.get('/api/players/search', (req, res) => {

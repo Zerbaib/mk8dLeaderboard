@@ -213,3 +213,5 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .consent a { color: var(--blue); }
 .notice { font-size: 13px; color: var(--muted); background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-bottom: 16px; }
 @media (max-width: 860px) { .legal { padding: 20px 18px; } }
+
+.region-icon { margin-right: 8px; }

@@ -2,9 +2,10 @@
 
 A time trial leaderboard for **Mario Kart 8 Deluxe** (150cc and 200cc, all 96 tracks including the Booster Course Pass).
 
-- Players submit their times through a form (player name, country, region, track, engine class, time, proof as a **link** or an **uploaded file**).
+- Players submit their times through a form (player name, country, track, engine class, time, proof as a **link** or an **uploaded file**).
 - Each submission is posted on **Discord** with two buttons: **✅ Approve** / **❌ Reject** (with an optional reason).
-- Only approved times appear on the leaderboards: **per track**, **players**, **countries** and **regions**.
+- Only approved times appear on the leaderboards: **per track**, **players**, **countries** and **world regions**
+  (Europe, North America, South America, Asia, Africa, Oceania — deduced automatically from the player's country).
 - Data is stored in a **SQLite** database (`data/leaderboard.db`).
 - Includes **Terms of Use**, **Privacy Policy** (GDPR), **Legal Notice** and a "How points work" page.
 
@@ -13,8 +14,8 @@ A time trial leaderboard for **Mario Kart 8 Deluxe** (150cc and 200cc, all 96 tr
 | Track leaderboard | Tracks |
 |---|---|
 | ![Track leaderboard](docs/track.png) | ![Tracks](docs/tracks.png) |
-| **Submission form** | **Privacy Policy** |
-| ![Form](docs/submit.png) | ![Privacy](docs/privacy.png) |
+| **Submission form** | **Region rankings** |
+| ![Form](docs/submit.png) | ![Regions](docs/regions.png) |
 
 ## Setup
 
@@ -85,6 +86,7 @@ For each track and engine class, only a player's **best approved time** counts.
 - Points = `1000 × record time ÷ player time` (the record holder gets 1,000 points).
 - **Players**: sum of points across all tracks.
 - **Countries / regions**: sum of the points of their players.
+  The country → region mapping is in `src/countries.js` (North America includes Central America and the Caribbean; Asia includes the Middle East; Turkey and the Caucasus are in Europe).
 
 ## Project structure
 
@@ -93,7 +95,7 @@ src/server.js             Express API + submission form (uploads via multer)
 src/db.js                 SQLite schema and leaderboard queries
 src/discord.js            Discord bot: posts submissions, Approve/Reject buttons
 src/tracks.js             The 96 tracks
-src/countries.js          Countries and region suggestions
+src/countries.js          Countries and their world region
 public/                   Front-end (plain HTML/CSS/JS) incl. legal pages
 scripts/seed.js           Demo data
 scripts/delete-player.js  Erasure of a player's data
@@ -104,8 +106,8 @@ scripts/delete-player.js  Erasure of a player's data
 | Route | Description |
 |---|---|
 | `POST /api/submissions` | Submit a time (multipart) |
-| `GET /api/leaderboard/track/:id?cc=150&country=FR&region=…` | Track leaderboard |
-| `GET /api/leaderboard/players?cc=150&country=FR&region=…` | Player rankings |
+| `GET /api/leaderboard/track/:id?cc=150&country=FR&region=europe` | Track leaderboard |
+| `GET /api/leaderboard/players?cc=150&region=north-america` | Player rankings |
 | `GET /api/leaderboard/countries?cc=150` | Country rankings |
-| `GET /api/leaderboard/regions?cc=150&country=FR` | Region rankings |
+| `GET /api/leaderboard/regions?cc=150` | Region rankings |
 | `GET /api/players/:id` | Player profile |
