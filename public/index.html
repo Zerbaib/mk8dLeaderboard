@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MK8DX Leaderboard</title>
+  <meta name="description" content="Classement communautaire des contre-la-montre Mario Kart 8 Deluxe en 150cc et 200cc.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Russo+One&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏁</text></svg>">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#/"><span class="brand-flag">🏁</span><span>MK8DX<b>Chronos</b></span></a>
+    <nav class="nav" id="nav">
+      <a href="#/circuits" data-nav="circuits">Circuits</a>
+      <a href="#/joueurs" data-nav="joueurs">Joueurs</a>
+      <a href="#/pays" data-nav="pays">Pays</a>
+      <a href="#/regions" data-nav="regions">Régions</a>
+    </nav>
+    <a class="btn btn-primary btn-submit" href="#/soumettre"><span class="long">Soumettre un chrono</span><span class="short">+ Chrono</span></a>
+  </header>
+
+  <main id="app" class="container" aria-live="polite"></main>
+
+  <footer class="footer container">
+    <p>Classement communautaire non officiel. Mario Kart est une marque de Nintendo.</p>
+    <p class="muted">Points : 1000 pour le record du circuit, proportionnel au temps du record pour les autres (record ÷ temps × 1000).</p>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>
