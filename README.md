@@ -78,6 +78,7 @@ What the code does to match the Privacy Policy:
 | `DISCORD_MOD_ROLE_ID` | Role allowed to review (optional) |
 | `DISCORD_BOT_STATUS` | Bot status text (default `🚀 go on mk8dxtimes.fr`) |
 | `DISCORD_INVITE_URL` | Public invite shown on the Terms page (optional) |
+| `LEGAL_SITE_URL` | Site address shown in the Terms of Use (defaults to `PUBLIC_URL`) |
 | `LEGAL_OWNER_NAME`, `LEGAL_OWNER_ADDRESS`, `LEGAL_CONTACT_EMAIL` | Publisher information |
 | `LEGAL_HOST_NAME`, `LEGAL_HOST_ADDRESS` | Hosting provider information |
 | `REJECTED_RETENTION_DAYS` | Days before rejected submissions are deleted (default 30) |

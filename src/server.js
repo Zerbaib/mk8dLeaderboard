@@ -17,7 +17,8 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 // Information displayed on the legal pages (set them in .env)
 const LEGAL = {
   siteName: process.env.SITE_NAME || 'MK8DX Times',
-  siteUrl: (process.env.PUBLIC_URL || `http://localhost:${PORT}`).replace(/\/$/, ''),
+  // URL shown on the legal pages; falls back to PUBLIC_URL
+  siteUrl: (process.env.LEGAL_SITE_URL || process.env.PUBLIC_URL || `http://localhost:${PORT}`).replace(/\/$/, ''),
   owner: process.env.LEGAL_OWNER_NAME || '[Publisher name]',
   ownerAddress: process.env.LEGAL_OWNER_ADDRESS || '[Postal address]',
   contactEmail: process.env.LEGAL_CONTACT_EMAIL || '[contact@example.com]',
