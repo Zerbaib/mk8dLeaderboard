@@ -167,11 +167,16 @@ const approveTx = db.transaction((id, reviewer) => {
   const previous = db.prepare(`SELECT s.time_ms, s.country, p.name FROM submissions s JOIN players p ON p.id = s.player_id
     WHERE s.status = 'approved' AND s.track_id = ? AND s.cc = ? ORDER BY s.time_ms, s.reviewed_at LIMIT 1`).get(sub.track_id, sub.cc);
   const playerId = upsertPlayer(sub.player_name, sub.country, sub.discord_id);
+  // Players holding the current record (several in case of a tie), other than the new player
+  const holders = previous ? db.prepare(`SELECT DISTINCT p.id, p.name, p.discord_id FROM submissions s
+    JOIN players p ON p.id = s.player_id
+    WHERE s.status = 'approved' AND s.track_id = ? AND s.cc = ? AND s.time_ms = ? AND p.id != ?`)
+    .all(sub.track_id, sub.cc, previous.time_ms, playerId) : [];
   db.prepare(`UPDATE submissions SET status = 'approved', player_id = ?, reviewed_by = ?, reviewed_at = datetime('now')
               WHERE id = ?`).run(playerId, reviewer, id);
-  // record: null if this time is not a record, otherwise { previous, tied }
+  // record: null if this time is not a record, otherwise { previous, tied, holders }
   const record = !previous || sub.time_ms <= previous.time_ms
-    ? { previous: previous || null, tied: Boolean(previous && sub.time_ms === previous.time_ms) }
+    ? { previous: previous || null, tied: Boolean(previous && sub.time_ms === previous.time_ms), holders }
     : null;
   return { sub: getSubmission(id), changed: true, record };
 });

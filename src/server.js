@@ -143,7 +143,10 @@ app.post('/api/submissions/:id/verify', async (req, res) => {
   if (!/^\d{6}$/.test(code)) return res.status(400).json({ error: 'The code has 6 digits.' });
   const result = store.verifySubmission(Number(req.params.id), req.body?.token, code);
   if (result.error) return res.status(result.status).json({ error: result.error });
-  if (!result.already) await sendToModerators(result.sub);
+  if (!result.already) {
+    await sendToModerators(result.sub);
+    discord.notifyPending(result.sub);
+  }
   res.json({ ok: true, discordName: result.sub.discord_name });
 });
 

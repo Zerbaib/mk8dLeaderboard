@@ -96,7 +96,9 @@ No privileged intent is needed. The slash commands are registered automatically 
 | Submit | The time is saved but **not** sent to the moderators yet. A tab opens on `DISCORD_INVITE_URL` (only until the player's first successful verification). |
 | `/verif` | The bot DMs a 6-digit code, valid 10 minutes (if DMs are closed, the code is shown only to the player in the channel). |
 | Enter the code | The submission is linked to the Discord account and posted in the review channel, with the account shown. |
+| Code accepted | The player receives a DM: "your time is waiting for a moderator". |
 | Review | The player receives a DM when the time is approved or rejected. |
+| Record beaten | When an approved time beats (or ties) a track record, the previous record holder(s) receive a DM. |
 
 Rules: the first verified submission links the player name to the Discord account. Afterwards only that account can submit
 under that name, and one Discord account can only have one player name. Names imported from mkwrs.com are protected:

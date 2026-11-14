@@ -89,6 +89,29 @@ async function dm(discordId, content) {
   }
 }
 
+// Tells the previous record holders that their record was beaten (or tied)
+function notifyRecordLost(sub, record) {
+  if (!record.previous) return;
+  const track = store.TRACK_BY_ID[sub.track_id];
+  const where = `**${track ? track.name : sub.track_id} ${sub.cc}cc**`;
+  const old = store.formatTime(record.previous.time_ms);
+  const time = store.formatTime(sub.time_ms);
+  const gap = ((record.previous.time_ms - sub.time_ms) / 1000).toFixed(3);
+  const link = `${PUBLIC_URL}/#/track/${sub.track_id}`;
+  for (const holder of record.holders || []) {
+    if (!holder.discord_id || holder.discord_id === sub.discord_id) continue;
+    dm(holder.discord_id, record.tied
+      ? `🤝 **${sub.player_name}** ${flag(sub.country)} tied your record on ${where} (${old}). Time to break the tie! ${link}`
+      : `⚠️ Your record on ${where} (${old}) was beaten by **${sub.player_name}** ${flag(sub.country)} with **${time}** (−${gap} s). Time to take it back! ${link}`);
+  }
+}
+
+// Confirms to the player that their verified submission is waiting for a moderator
+function notifyPending(sub) {
+  return dm(sub.discord_id, `⏳ Your time on **${trackLabel(sub)}** is verified and waiting for a moderator. `
+    + "You'll get a DM as soon as it's reviewed.");
+}
+
 function trackLabel(sub) {
   const track = store.TRACK_BY_ID[sub.track_id];
   return `${track ? track.name : sub.track_id} ${sub.cc}cc (${store.formatTime(sub.time_ms)})`;
@@ -160,6 +183,7 @@ async function handleInteraction(interaction) {
     if (record) webhook.announceRecord(sub, record);
     dm(sub.discord_id, `✅ Your time on **${trackLabel(sub)}** has been approved and is now on the leaderboard!`
       + `${record && !record.tied ? ' 🏆 **It is the new record!**' : ''} ${PUBLIC_URL}`);
+    if (record) notifyRecordLost(sub, record);
     return;
   }
 
@@ -278,4 +302,4 @@ async function start() {
 
 const isEnabled = () => Boolean(TOKEN && CHANNEL_ID);
 
-module.exports = { start, isEnabled, notifySubmission, buildEmbed, buildButtons, handleInteraction, COMMANDS };
+module.exports = { start, isEnabled, notifySubmission, notifyPending, buildEmbed, buildButtons, handleInteraction, COMMANDS };

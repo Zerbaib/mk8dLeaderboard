@@ -475,7 +475,7 @@ function viewPrivacy() {
       <thead><tr><th>Purpose</th><th>Legal basis</th></tr></thead>
       <tbody>
         <tr><td>Reviewing your submission and publishing it on the leaderboards</td><td>Performance of the service you request by accepting the Terms of Use (Art. 6(1)(b) GDPR)</td></tr>
-        <tr><td>Checking that you own your player name (Discord verification) and sending you the result of the review by Discord direct message</td><td>Performance of the service you request (Art. 6(1)(b) GDPR) and our legitimate interest in preventing impersonation (Art. 6(1)(f) GDPR)</td></tr>
+        <tr><td>Checking that you own your player name (Discord verification) and sending you notifications by Discord direct message (review status, record beaten)</td><td>Performance of the service you request (Art. 6(1)(b) GDPR) and our legitimate interest in preventing impersonation (Art. 6(1)(f) GDPR)</td></tr>
         <tr><td>Preventing spam and abuse</td><td>Our legitimate interest in keeping the Site working (Art. 6(1)(f) GDPR)</td></tr>
         <tr><td>Answering your requests</td><td>Our legitimate interest / legal obligations</td></tr>
       </tbody></table></div>
@@ -483,7 +483,7 @@ function viewPrivacy() {
     <p>Once a time is approved, the following are <b>publicly visible</b> on the Site: player name, country and world region, times, rankings, points and proof (link or file). Rejected and pending submissions are never public. The link between your player name and your Discord account is <b>not</b> displayed on the Site; it is only visible to the moderators.</p>
     <h2>5. Who receives your data</h2>
     <ul>
-      <li><b>Moderators</b>: each submission is sent, with the Discord account that confirmed it, to a private channel of our Discord server, where volunteer moderators review it. Our Discord bot also sends you direct messages (your verification code and the result of the review). Discord is operated by Discord Inc. (United States); data transferred to it is covered by the EU-US Data Privacy Framework and/or the European Commission's Standard Contractual Clauses. See <a href="https://discord.com/privacy" target="_blank" rel="noopener">Discord's privacy policy</a>.</li>
+      <li><b>Moderators</b>: each submission is sent, with the Discord account that confirmed it, to a private channel of our Discord server, where volunteer moderators review it. Our Discord bot also sends you direct messages: your verification code, confirmation that your time is waiting for review, the result of the review, and a notice when someone beats or ties one of your records. Discord is operated by Discord Inc. (United States); data transferred to it is covered by the EU-US Data Privacy Framework and/or the European Commission's Standard Contractual Clauses. See <a href="https://discord.com/privacy" target="_blank" rel="noopener">Discord's privacy policy</a>.</li>
       <li><b>Our hosting provider</b>: ${v(L.hostName)}, which stores the Site and its database.</li>
     </ul>
     <p>Your data is never sold or used for advertising.</p>
