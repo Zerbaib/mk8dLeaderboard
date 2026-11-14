@@ -163,10 +163,17 @@ const approveTx = db.transaction((id, reviewer) => {
   const sub = getSubmission(id);
   if (!sub) throw new Error('Submission not found');
   if (sub.status !== 'pending') return { sub, changed: false };
+  // Current record on this track and class, before this approval
+  const previous = db.prepare(`SELECT s.time_ms, s.country, p.name FROM submissions s JOIN players p ON p.id = s.player_id
+    WHERE s.status = 'approved' AND s.track_id = ? AND s.cc = ? ORDER BY s.time_ms, s.reviewed_at LIMIT 1`).get(sub.track_id, sub.cc);
   const playerId = upsertPlayer(sub.player_name, sub.country, sub.discord_id);
   db.prepare(`UPDATE submissions SET status = 'approved', player_id = ?, reviewed_by = ?, reviewed_at = datetime('now')
               WHERE id = ?`).run(playerId, reviewer, id);
-  return { sub: getSubmission(id), changed: true };
+  // record: null if this time is not a record, otherwise { previous, tied }
+  const record = !previous || sub.time_ms <= previous.time_ms
+    ? { previous: previous || null, tied: Boolean(previous && sub.time_ms === previous.time_ms) }
+    : null;
+  return { sub: getSubmission(id), changed: true, record };
 });
 
 function approveSubmission(id, reviewer) {

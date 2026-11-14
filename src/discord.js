@@ -6,6 +6,7 @@ const {
   SlashCommandBuilder,
 } = require('discord.js');
 const store = require('./db');
+const webhook = require('./webhook');
 const { COUNTRY_BY_CODE, REGION_BY_ID } = require('./countries');
 
 const TOKEN = process.env.DISCORD_TOKEN;
@@ -150,13 +151,15 @@ async function handleInteraction(interaction) {
       await interaction.reply({ content: `⚠️ ${e.message}`, flags: MessageFlags.Ephemeral });
       return;
     }
-    const { sub, changed } = result;
+    const { sub, changed, record } = result;
     if (!changed) {
       await interaction.reply({ content: `This submission has already been reviewed (${LABELS[sub.status]}).`, flags: MessageFlags.Ephemeral });
       return;
     }
     await refreshMessage(interaction, sub);
-    dm(sub.discord_id, `✅ Your time on **${trackLabel(sub)}** has been approved and is now on the leaderboard! ${PUBLIC_URL}`);
+    if (record) webhook.announceRecord(sub, record);
+    dm(sub.discord_id, `✅ Your time on **${trackLabel(sub)}** has been approved and is now on the leaderboard!`
+      + `${record && !record.tied ? ' 🏆 **It is the new record!**' : ''} ${PUBLIC_URL}`);
     return;
   }
 

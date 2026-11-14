@@ -5,15 +5,20 @@
 //   npm run import-wrs -- --file page.html   use a saved copy of the page instead of downloading it
 //
 // Safe to run again: a record already in the database (same player, track, class and time) is skipped.
+//   npm run import-wrs -- --announce    also post each new record on the records webhook
+//                                       (only records that beat or tie a time already in the database)
 // Only one page is downloaded per run (the site asks for a 20 s crawl delay between requests).
+require('dotenv').config({ quiet: true });
 const fs = require('fs');
 const store = require('../src/db');
+const webhook = require('../src/webhook');
 const { TRACKS } = require('../src/tracks');
 const { COUNTRY_BY_CODE } = require('../src/countries');
 
 const SOURCE = 'https://mkwrs.com/mk8dx/';
 const args = process.argv.slice(2);
 const dryRun = args.includes('--dry-run');
+const announce = args.includes('--announce');
 const fileIdx = args.indexOf('--file');
 const file = fileIdx >= 0 ? args[fileIdx + 1] : null;
 
@@ -115,6 +120,7 @@ async function main() {
 
   let added = 0;
   let skipped = 0;
+  const toAnnounce = [];
   const run = store.db.transaction(() => {
     for (const r of records) {
       if (exists.get(r.player, r.track.id, r.cc, r.timeMs)) { skipped++; continue; }
@@ -127,13 +133,24 @@ async function main() {
         player_name: r.player, country: r.country, track_id: r.track.id, cc: r.cc, time_ms: r.timeMs,
         proof_url: r.proof, proof_file: null, comment: `World record imported from mkwrs.com (set on ${r.date})`,
       });
-      store.approveSubmission(sub.id, 'mkwrs.com import');
+      const { sub: approved, record } = store.approveSubmission(sub.id, 'mkwrs.com import');
+      // An empty track is not announced: only records that beat or tie an existing time
+      if (announce && record && record.previous) toAnnounce.push([approved, record]);
       const when = `${r.date} 12:00:00`;
       setDate.run(when, when, sub.id);
       added++;
     }
   });
   run();
+
+  if (toAnnounce.length) {
+    if (!webhook.isEnabled()) {
+      console.warn('--announce ignored: DISCORD_RECORDS_WEBHOOK_URL is not set.');
+    } else {
+      console.log(`Announcing ${toAnnounce.length} new record(s) on the webhook (2 s apart)...`);
+      await Promise.all(toAnnounce.map(([s, r]) => webhook.announceRecord(s, r)));
+    }
+  }
 
   console.log(dryRun
     ? `Dry run: ${added} record(s) would be added, ${skipped} already present. Nothing was changed.`

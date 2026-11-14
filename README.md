@@ -44,8 +44,22 @@ and adds them to the database as approved times (player, country, time, date of 
 - `npm run import-wrs -- --dry-run` shows what would be added without changing anything.
 - Running it again only adds new records, so you can run it regularly to follow new WRs.
 - Imported times are marked as reviewed by `mkwrs.com import`.
+- `npm run import-wrs -- --announce` also posts the imported records on the records webhook (see below), but only those
+  that beat or tie a time already in the database. Do the **first** import without `--announce` (otherwise ~190 messages).
 
 The data belongs to mkwrs.com: credit them and ask their maintainers before importing regularly.
+
+## Record announcements (webhook)
+
+Every time a new record is set on a track (best time for that track and class), a message is posted on a Discord webhook:
+player, time, class, previous record and gap, proof link and a link to the track page. Ties are announced too.
+Slower times are never announced.
+
+1. In Discord: channel settings → **Integrations** → **Webhooks** → **New Webhook** → **Copy Webhook URL**.
+2. Put it in `.env`: `DISCORD_RECORDS_WEBHOOK_URL=https://discord.com/api/webhooks/...`
+
+Announcements are sent when a moderator clicks **Approve**, and by `npm run import-wrs -- --announce`.
+Messages are queued 2 s apart to respect Discord's rate limit, and never ping anyone.
 
 ## Discord bot setup
 
@@ -110,6 +124,7 @@ What the code does to match the Privacy Policy:
 | `DISCORD_CHANNEL_ID` | Channel where submissions are posted for review |
 | `DISCORD_MOD_ROLE_ID` | Role allowed to review (optional) |
 | `DISCORD_BOT_STATUS` | Bot status text (default `🚀 go on mk8dxtimes.fr`) |
+| `DISCORD_RECORDS_WEBHOOK_URL` | Webhook where new records are announced (optional) |
 | `DISCORD_INVITE_URL` | Public invite shown on the Terms page (optional) |
 | `LEGAL_SITE_URL` | Site address shown in the Terms of Use (defaults to `PUBLIC_URL`) |
 | `LEGAL_OWNER_NAME`, `LEGAL_OWNER_ADDRESS`, `LEGAL_CONTACT_EMAIL` | Publisher information |
