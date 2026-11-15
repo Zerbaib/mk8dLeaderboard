@@ -50,7 +50,7 @@ and the browser then navigates between pages without reloading.
 - `/sitemap.xml` (all pages, with the date of the last approved time) and `/robots.txt`.
 
 The absolute URLs (canonical, sitemap, previews) use `LEGAL_SITE_URL`, or `PUBLIC_URL` if it is not set:
-set it to your real address (e.g. `https://mk8dxtimes.fr`).
+set it to your real address (e.g. `https://mk8dxtimes.com`).
 
 Then add the site to [Google Search Console](https://search.google.com/search-console) and submit `https://your-domain/sitemap.xml`.
 
@@ -151,7 +151,7 @@ What the code does to match the Privacy Policy:
 | `DISCORD_TOKEN` | Bot token |
 | `DISCORD_CHANNEL_ID` | Channel where submissions are posted for review |
 | `DISCORD_MOD_ROLE_ID` | Role allowed to review (optional) |
-| `DISCORD_BOT_STATUS` | Bot status text (default `🚀 go on mk8dxtimes.fr`) |
+| `DISCORD_BOT_STATUS` | Bot status text (default `🚀 go on mk8dxtimes.com`) |
 | `DISCORD_RECORDS_WEBHOOK_URL` | Webhook where new records are announced (optional) |
 | `DISCORD_INVITE_URL` | Public invite shown on the Terms page (optional) |
 | `LEGAL_SITE_URL` | Site address shown in the Terms of Use (defaults to `PUBLIC_URL`) |

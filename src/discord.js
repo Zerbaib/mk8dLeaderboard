@@ -13,7 +13,7 @@ const TOKEN = process.env.DISCORD_TOKEN;
 const CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
 const MOD_ROLE_ID = process.env.DISCORD_MOD_ROLE_ID; // optional
 // Bot status (custom status shown under the bot's name)
-const BOT_STATUS = process.env.DISCORD_BOT_STATUS || '🚀 go on mk8dxtimes.fr';
+const BOT_STATUS = process.env.DISCORD_BOT_STATUS || '🚀 go on mk8dxtimes.com';
 const PUBLIC_URL = (process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, '');
 const UPLOAD_DIR = path.join(__dirname, '..', 'uploads');
 const MAX_ATTACH = 8 * 1024 * 1024; // above this size we send a link instead of the file
