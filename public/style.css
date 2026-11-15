@@ -71,8 +71,8 @@ a { color: inherit; }
 .btn[disabled] { opacity: .6; cursor: wait; }
 
 .seg { display: inline-flex; background: var(--bg-2); border: 1px solid var(--line); border-radius: 999px; padding: 3px; }
-.seg button { border: 0; background: none; color: var(--muted); font: 700 13px Inter, sans-serif; padding: 7px 14px; border-radius: 999px; cursor: pointer; }
-.seg button.on { background: var(--yellow); color: #1b1400; }
+.seg button, .seg a { border: 0; text-decoration: none; background: none; color: var(--muted); font: 700 13px Inter, sans-serif; padding: 7px 14px; border-radius: 999px; cursor: pointer; }
+.seg button.on, .seg a.on { background: var(--yellow); color: #1b1400; }
 
 input, select, textarea {
   width: 100%; padding: 11px 13px; border-radius: 10px; border: 1px solid var(--line);
@@ -140,7 +140,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 /* ---------- Grille des circuits ---------- */
 .cup { margin-bottom: 22px; }
-.cup h3 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+.cup h2 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); display: flex; gap: 8px; align-items: center; }
 .tracks { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
 .track {
   display: flex; flex-direction: column; justify-content: space-between; gap: 8px; min-height: 92px;
@@ -229,3 +229,10 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .small { font-size: 13px; }
 .small a { color: var(--blue); }
 .btn-icon { width: 18px; height: 18px; flex: none; }
+
+/* ---------- Server-rendered pages ---------- */
+.h1-cc { color: var(--yellow); }
+.crumbs { margin: 0 0 4px; }
+.see-also { margin: 18px 0 0; color: var(--muted); font-size: 14px; }
+.see-also a { color: var(--blue); }
+#app.loading { opacity: .55; transition: opacity .15s .1s; pointer-events: none; }

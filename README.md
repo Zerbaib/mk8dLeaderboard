@@ -36,6 +36,24 @@ npm start              # http://localhost:3000
 
 To try it with fake data: `npm run seed` (do not run it in production).
 
+## Search engines (SEO)
+
+Every page is rendered on the server, so search engines receive the complete content (no JavaScript needed),
+and the browser then navigates between pages without reloading.
+
+- Real addresses: `/tracks`, `/track/wii-rainbow-road/200cc`, `/players?cc=200`, `/player/12`, `/countries`, `/regions`…
+  Old links like `/#/track/big-blue` are redirected automatically.
+- Each page has its own title, description and canonical URL
+  (e.g. *"Wii Rainbow Road 200cc World Record – Mario Kart 8 Deluxe"*, with the current record in the description).
+- Social previews (Open Graph / Twitter cards) with `public/og-image.png`.
+- Structured data (schema.org): `WebSite`, `Organization`, `BreadcrumbList`, `ItemList` (track leaderboards), `ProfilePage` (players).
+- `/sitemap.xml` (all pages, with the date of the last approved time) and `/robots.txt`.
+
+The absolute URLs (canonical, sitemap, previews) use `LEGAL_SITE_URL`, or `PUBLIC_URL` if it is not set:
+set it to your real address (e.g. `https://mk8dxtimes.fr`).
+
+Then add the site to [Google Search Console](https://search.google.com/search-console) and submit `https://your-domain/sitemap.xml`.
+
 ## Importing the current world records
 
 `npm run import-wrs` downloads the current 150cc and 200cc world records from [mkwrs.com](https://mkwrs.com/mk8dx/)
@@ -156,12 +174,15 @@ For each track and engine class, only a player's **best approved time** counts.
 ## Project structure
 
 ```
-src/server.js             Express API + submission form (uploads via multer)
+src/server.js             Express API, submissions (uploads via multer), HTML pages
+src/pages.js              Server-side rendering, sitemap.xml, robots.txt
+src/template.html         HTML shell of every page
 src/db.js                 SQLite schema and leaderboard queries
 src/discord.js            Discord bot: posts submissions, Approve/Reject buttons
 src/tracks.js             The 96 tracks
 src/countries.js          Countries and their world region
-public/                   Front-end (plain HTML/CSS/JS) incl. legal pages
+public/render.js          Page rendering shared by the server and the browser (incl. legal pages)
+public/app.js             Browser: navigation, filters, submission form, Discord verification
 scripts/seed.js           Demo data
 scripts/delete-player.js  Erasure of a player's data
 ```
@@ -170,6 +191,7 @@ scripts/delete-player.js  Erasure of a player's data
 
 | Route | Description |
 |---|---|
+| `GET /api/page?path=/track/big-blue/150cc` | Data of a page (used for navigation without reload) |
 | `POST /api/submissions` | Submit a time (multipart) |
 | `GET /api/leaderboard/track/:id?cc=150&country=FR&region=europe` | Track leaderboard |
 | `GET /api/leaderboard/players?cc=150&region=north-america` | Player rankings |

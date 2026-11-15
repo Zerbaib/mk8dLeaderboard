@@ -41,7 +41,7 @@ function buildPayload(sub, { previous, tied }, { test = false } = {}) {
     footer: { text: `${track ? track.cup : ''} • ${COUNTRY_BY_CODE[sub.country]?.name || sub.country}` },
     timestamp: new Date().toISOString(),
   };
-  if (PUBLIC_URL) embed.url = `${PUBLIC_URL}/#/track/${sub.track_id}`;
+  if (PUBLIC_URL) embed.url = `${PUBLIC_URL}/track/${sub.track_id}/${sub.cc}cc`;
   if (IS_PUBLIC) embed.thumbnail = { url: `${PUBLIC_URL}/logo.png` };
 
   return {

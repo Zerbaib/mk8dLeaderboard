@@ -7,6 +7,7 @@ const multer = require('multer');
 const store = require('./db');
 const discord = require('./discord');
 const webhook = require('./webhook');
+const createPages = require('./pages');
 const { TRACKS, TRACK_BY_ID, CUPS } = require('./tracks');
 const { COUNTRIES, COUNTRY_BY_CODE, REGIONS, REGION_BY_ID } = require('./countries');
 
@@ -65,7 +66,7 @@ const verifyLimited = limiter(20); // code attempts per IP
 const app = express();
 app.set('trust proxy', true);
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '..', 'public')));
+app.use(express.static(path.join(__dirname, '..', 'public'), { index: false }));
 app.use('/uploads', express.static(UPLOAD_DIR, { maxAge: '7d' }));
 // Self-hosted flags and fonts: no request is made to third-party servers
 app.use('/flags', express.static(path.join(__dirname, '..', 'node_modules', 'flag-icons', 'flags', '4x3'), { maxAge: '30d' }));
@@ -76,8 +77,20 @@ const ccOf = (v) => (Number(v) === 200 ? 200 : 150);
 const clean = (v, max = 100) => String(v || '').trim().replace(/\s+/g, ' ').slice(0, max);
 
 // ---------- Metadata ----------
-app.get('/api/meta', (req, res) => {
-  res.json({ tracks: TRACKS, cups: CUPS, countries: COUNTRIES, regions: REGIONS, legal: LEGAL });
+const META = { tracks: TRACKS, cups: CUPS, countries: COUNTRIES, regions: REGIONS, legal: LEGAL };
+const pages = createPages(META);
+app.get('/api/meta', (req, res) => res.json(META));
+
+// ---------- Search engines ----------
+app.get('/robots.txt', (req, res) => res.type('text/plain').send(pages.robots()));
+app.get('/sitemap.xml', (req, res) => res.type('application/xml').send(pages.sitemap()));
+
+// Data of a page, used by the browser when navigating without reloading
+app.get('/api/page', (req, res) => {
+  const target = new URL(String(req.query.path || '/'), 'http://x');
+  const r = pages.resolve(target.pathname, target.search);
+  if (r.redirect) return res.json({ redirect: r.redirect });
+  res.status(r.status).json({ route: r.route, data: r.data });
 });
 
 // ---------- Submissions ----------
@@ -204,6 +217,16 @@ function purge() {
 }
 purge();
 setInterval(purge, 60 * 60 * 1000).unref();
+
+// ---------- HTML pages (rendered on the server) ----------
+app.get('/index.html', (req, res) => res.redirect(301, '/'));
+app.use((req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  if (/^\/(api|uploads|flags|fonts)\//.test(req.path)) return next();
+  const r = pages.resolve(req.path, req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '');
+  if (r.redirect) return res.redirect(301, r.redirect);
+  res.status(r.status).set('Cache-Control', 'no-cache').type('html').send(pages.html(r));
+});
 
 app.listen(PORT, () => {
   console.log(`🏁 MK8DX Leaderboard running on http://localhost:${PORT}`);

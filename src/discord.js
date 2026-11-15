@@ -97,7 +97,7 @@ function notifyRecordLost(sub, record) {
   const old = store.formatTime(record.previous.time_ms);
   const time = store.formatTime(sub.time_ms);
   const gap = ((record.previous.time_ms - sub.time_ms) / 1000).toFixed(3);
-  const link = `${PUBLIC_URL}/#/track/${sub.track_id}`;
+  const link = `${PUBLIC_URL}/track/${sub.track_id}/${sub.cc}cc`;
   for (const holder of record.holders || []) {
     if (!holder.discord_id || holder.discord_id === sub.discord_id) continue;
     dm(holder.discord_id, record.tied
