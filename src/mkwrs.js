@@ -121,9 +121,9 @@ async function importWorldRecords({ file = null, dryRun = false, announce = fals
         player_name: r.player, country: r.country, track_id: r.track.id, cc: r.cc, time_ms: r.timeMs,
         proof_url: r.proof, proof_file: null, comment: `World record imported from mkwrs.com (set on ${r.date})`,
       });
-      const { sub: approved, record } = store.approveSubmission(sub.id, 'mkwrs.com import');
+      const { sub: approved, ranking } = store.approveSubmission(sub.id, 'mkwrs.com import');
       // An empty track is not announced: only records that beat or tie an existing time
-      if (announce && record && record.previous) toAnnounce.push([approved, record]);
+      if (announce && ranking && ranking.rank === 1 && ranking.previousRecord) toAnnounce.push([approved, ranking]);
       const when = `${r.date} 12:00:00`;
       setDate.run(when, when, sub.id);
       added++;

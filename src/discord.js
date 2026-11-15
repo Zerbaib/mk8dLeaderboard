@@ -89,20 +89,31 @@ async function dm(discordId, content) {
   }
 }
 
-// Tells the previous record holders that their record was beaten (or tied)
-function notifyRecordLost(sub, record) {
-  if (!record.previous) return;
+// Tells the top 10 players overtaken (or tied) by a new time
+function notifyOvertaken(sub, ranking) {
   const track = store.TRACK_BY_ID[sub.track_id];
   const where = `**${track ? track.name : sub.track_id} ${sub.cc}cc**`;
-  const old = store.formatTime(record.previous.time_ms);
+  const by = `**${sub.player_name}** ${flag(sub.country)}`;
   const time = store.formatTime(sub.time_ms);
-  const gap = ((record.previous.time_ms - sub.time_ms) / 1000).toFixed(3);
   const link = `${PUBLIC_URL}/track/${sub.track_id}/${sub.cc}cc`;
-  for (const holder of record.holders || []) {
-    if (!holder.discord_id || holder.discord_id === sub.discord_id) continue;
-    dm(holder.discord_id, record.tied
-      ? `🤝 **${sub.player_name}** ${flag(sub.country)} tied your record on ${where} (${old}). Time to break the tie! ${link}`
-      : `⚠️ Your record on ${where} (${old}) was beaten by **${sub.player_name}** ${flag(sub.country)} with **${time}** (−${gap} s). Time to take it back! ${link}`);
+  for (const e of ranking.passed) {
+    if (!e.discord_id || e.discord_id === sub.discord_id) continue;
+    const gap = ((e.time_ms - sub.time_ms) / 1000).toFixed(3);
+    let text;
+    if (e.oldRank === 1) {
+      text = `⚠️ Your record on ${where} (${store.formatTime(e.time_ms)}) was beaten by ${by} with **${time}** (−${gap} s). Time to take it back!`;
+    } else if (e.newRank > store.TOP) {
+      text = `📉 ${by} passed you on ${where} with **${time}**: you dropped out of the top ${store.TOP} (now #${e.newRank}).`;
+    } else {
+      text = `📉 ${by} passed you on ${where} with **${time}** (−${gap} s): you're now **#${e.newRank}** (was #${e.oldRank}).`;
+    }
+    dm(e.discord_id, `${text} ${link}`);
+  }
+  for (const e of ranking.tiedWith) {
+    if (!e.discord_id || e.discord_id === sub.discord_id) continue;
+    dm(e.discord_id, ranking.rank === 1
+      ? `🤝 ${by} tied your record on ${where} (${time}). Time to break the tie! ${link}`
+      : `🤝 ${by} tied your time on ${where} (${time}): you now share #${ranking.rank}. ${link}`);
   }
 }
 
@@ -174,16 +185,20 @@ async function handleInteraction(interaction) {
       await interaction.reply({ content: `⚠️ ${e.message}`, flags: MessageFlags.Ephemeral });
       return;
     }
-    const { sub, changed, record } = result;
+    const { sub, changed, ranking } = result;
     if (!changed) {
       await interaction.reply({ content: `This submission has already been reviewed (${LABELS[sub.status]}).`, flags: MessageFlags.Ephemeral });
       return;
     }
     await refreshMessage(interaction, sub);
-    if (record) webhook.announceRecord(sub, record);
-    dm(sub.discord_id, `✅ Your time on **${trackLabel(sub)}** has been approved and is now on the leaderboard!`
-      + `${record && !record.tied ? ' 🏆 **It is the new record!**' : ''} ${PUBLIC_URL}`);
-    if (record) notifyRecordLost(sub, record);
+    // A time entering the top 10 is announced, and the players it overtakes are notified
+    if (ranking) webhook.announceRecord(sub, ranking);
+    let extra = '';
+    if (ranking?.rank === 1) extra = ranking.tiedWith.length ? ' 🤝 **You tied the record!**' : ' 🏆 **It is the new record!**';
+    else if (ranking) extra = ` 🔥 **You're now #${ranking.rank} on this track!**`;
+    dm(sub.discord_id, `✅ Your time on **${trackLabel(sub)}** has been approved and is now on the leaderboard!${extra} `
+      + `${PUBLIC_URL}/track/${sub.track_id}/${sub.cc}cc`);
+    if (ranking) notifyOvertaken(sub, ranking);
     return;
   }
 

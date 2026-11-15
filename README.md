@@ -69,9 +69,10 @@ The data belongs to mkwrs.com: credit them and ask their maintainers before impo
 
 ## Record announcements (webhook)
 
-Every time a new record is set on a track (best time for that track and class), a message is posted on a Discord webhook:
-player, time, class, previous record and gap, proof link and a link to the track page. Ties are announced too.
-Slower times are never announced.
+Every time an approved time **enters the top 10** of a track (and improves the player's best time), a message is posted
+on a Discord webhook: player, time, rank, progress (`#7 → #3` or new entry), gap to the record, players overtaken, proof
+and a link to the track page. A new record (or a tied record) has its own message with the previous record and the gap.
+Times outside the top 10 are never announced.
 
 1. In Discord: channel settings → **Integrations** → **Webhooks** → **New Webhook** → **Copy Webhook URL**.
 2. Put it in `.env`: `DISCORD_RECORDS_WEBHOOK_URL=https://discord.com/api/webhooks/...`
@@ -81,7 +82,7 @@ Announcements are sent when a moderator clicks **Approve**, and by `npm run impo
 To test it without touching the database:
 
 - `npm run test-webhook` posts a "webhook connected" message;
-- `npm run test-webhook -- --record` posts an example record announcement, marked `[TEST]`.
+- `npm run test-webhook -- --record` posts an example top 10 announcement, marked `[TEST]`.
 
 When the site starts, the log shows `[webhook] Record announcements: enabled` (or why it is disabled),
 and each announcement is logged as `[webhook] Announced: ...`.
@@ -115,8 +116,8 @@ No privileged intent is needed. The slash commands are registered automatically 
 | `/verif` | The bot DMs a 6-digit code, valid 10 minutes (if DMs are closed, the code is shown only to the player in the channel). |
 | Enter the code | The submission is linked to the Discord account and posted in the review channel, with the account shown. |
 | Code accepted | The player receives a DM: "your time is waiting for a moderator". |
-| Review | The player receives a DM when the time is approved or rejected. |
-| Record beaten | When an approved time beats (or ties) a track record, the previous record holder(s) receive a DM. |
+| Review | The player receives a DM when the time is approved (with their rank if they enter the top 10) or rejected. |
+| Overtaken | When an approved time enters the top 10 of a track, every top 10 player it overtakes gets a DM with their new rank ("you're now #5 (was #4)", "your record was beaten", "you dropped out of the top 10"). Players tied get a DM too. |
 
 Rules: the first verified submission links the player name to the Discord account. Afterwards only that account can submit
 under that name, and one Discord account can only have one player name. Names imported from mkwrs.com are protected:

@@ -159,27 +159,49 @@ function upsertPlayer(name, country, discordId = null) {
   return insertPlayer.run(name, country, discordId).lastInsertRowid;
 }
 
+// Number of places that trigger announcements and notifications
+const TOP = 10;
+
 const approveTx = db.transaction((id, reviewer) => {
   const sub = getSubmission(id);
   if (!sub) throw new Error('Submission not found');
   if (sub.status !== 'pending') return { sub, changed: false };
-  // Current record on this track and class, before this approval
-  const previous = db.prepare(`SELECT s.time_ms, s.country, p.name FROM submissions s JOIN players p ON p.id = s.player_id
-    WHERE s.status = 'approved' AND s.track_id = ? AND s.cc = ? ORDER BY s.time_ms, s.reviewed_at LIMIT 1`).get(sub.track_id, sub.cc);
   const playerId = upsertPlayer(sub.player_name, sub.country, sub.discord_id);
-  // Players holding the current record (several in case of a tie), other than the new player
-  const holders = previous ? db.prepare(`SELECT DISTINCT p.id, p.name, p.discord_id FROM submissions s
-    JOIN players p ON p.id = s.player_id
-    WHERE s.status = 'approved' AND s.track_id = ? AND s.cc = ? AND s.time_ms = ? AND p.id != ?`)
-    .all(sub.track_id, sub.cc, previous.time_ms, playerId) : [];
+  // Best time of every player on this track and class, before this approval
+  const board = db.prepare(`SELECT p.id, p.name, p.country, p.discord_id, MIN(s.time_ms) AS time_ms
+    FROM submissions s JOIN players p ON p.id = s.player_id
+    WHERE s.status = 'approved' AND s.track_id = ? AND s.cc = ? GROUP BY p.id`).all(sub.track_id, sub.cc);
   db.prepare(`UPDATE submissions SET status = 'approved', player_id = ?, reviewed_by = ?, reviewed_at = datetime('now')
               WHERE id = ?`).run(playerId, reviewer, id);
-  // record: null if this time is not a record, otherwise { previous, tied, holders }
-  const record = !previous || sub.time_ms <= previous.time_ms
-    ? { previous: previous || null, tied: Boolean(previous && sub.time_ms === previous.time_ms), holders }
-    : null;
-  return { sub: getSubmission(id), changed: true, record };
+  return { sub: getSubmission(id), changed: true, ranking: rankingChange(board, playerId, sub.time_ms) };
 });
+
+// What this new time changes in the top 10 of the track, or null if it does not enter it
+// (or does not improve the player's best time). { rank, previousRank, total, recordMs, previousRecord, passed, tiedWith }
+function rankingChange(board, playerId, timeMs) {
+  const rankOf = (t, list) => 1 + list.filter((e) => e.time_ms < t).length;
+  const own = board.find((e) => e.id === playerId);
+  const others = board.filter((e) => e.id !== playerId);
+  if (own && timeMs >= own.time_ms) return null; // not a personal best: the leaderboard does not change
+  const rank = rankOf(timeMs, others);
+  if (rank > TOP) return null;
+  const oldBest = own ? own.time_ms : Infinity;
+  const leader = board.reduce((a, e) => (!a || e.time_ms < a.time_ms ? e : a), null);
+  const pick = (e) => ({ name: e.name, country: e.country, discord_id: e.discord_id, time_ms: e.time_ms });
+  return {
+    rank,
+    previousRank: own ? rankOf(own.time_ms, board) : null,
+    total: others.length + 1,
+    recordMs: Math.min(timeMs, ...others.map((e) => e.time_ms)),
+    previousRecord: leader ? pick(leader) : null,
+    // Players this time overtakes (each goes down one place)
+    passed: others.filter((e) => e.time_ms > timeMs && e.time_ms <= oldBest)
+      .map((e) => ({ ...pick(e), oldRank: rankOf(e.time_ms, board), newRank: rankOf(e.time_ms, board) + 1 }))
+      .filter((e) => e.oldRank <= TOP)
+      .sort((a, b) => a.time_ms - b.time_ms),
+    tiedWith: others.filter((e) => e.time_ms === timeMs).map(pick),
+  };
+}
 
 function approveSubmission(id, reviewer) {
   return approveTx(id, reviewer);
@@ -395,7 +417,7 @@ function recentRecords(limit = 10) {
 
 module.exports = {
   db, parseTime, formatTime, TRACK_BY_ID,
-  createSubmission, getSubmission, unsentSubmissions, purgeRejected, purgeUnverified, issueCode, verifySubmission, claimError, linkPlayer, setDiscordMessage, approveSubmission, rejectSubmission,
+  createSubmission, getSubmission, unsentSubmissions, rankingChange, TOP, purgeRejected, purgeUnverified, issueCode, verifySubmission, claimError, linkPlayer, setDiscordMessage, approveSubmission, rejectSubmission,
   trackLeaderboard, worldRecords, playerRanking, countryRanking, regionRanking, playerProfile, searchPlayers,
   stats, recentRecords,
 };
