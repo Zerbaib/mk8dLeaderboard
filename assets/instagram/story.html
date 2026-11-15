@@ -1,0 +1,77 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+  @font-face { font-family: Russo; src: url(../../node_modules/@fontsource/russo-one/files/russo-one-latin-400-normal.woff2); }
+  @font-face { font-family: Inter; font-weight: 500; src: url(../../node_modules/@fontsource/inter/files/inter-latin-500-normal.woff2); }
+  @font-face { font-family: Inter; font-weight: 700; src: url(../../node_modules/@fontsource/inter/files/inter-latin-700-normal.woff2); }
+  * { box-sizing: border-box; }
+  body { margin: 0; width: 1080px; height: 1920px; overflow: hidden; position: relative; color: #eef1f7; font-family: Inter, sans-serif;
+    background:
+      radial-gradient(900px 700px at 0% 8%, rgba(229,53,43,.45), transparent 60%),
+      radial-gradient(900px 800px at 100% 92%, rgba(45,140,255,.35), transparent 60%),
+      #0b0e14; }
+  .band { position: absolute; left: -200px; right: -200px; height: 120px; transform: rotate(-14deg); opacity: .09;
+    background: conic-gradient(#fff 0 25%, #000 0 50%, #fff 0 75%, #000 0) 0 0 / 60px 60px; }
+  .band.a { top: 520px; } .band.b { top: 1420px; transform: rotate(-14deg); opacity: .06; }
+  .speed { position: absolute; left: 0; width: 230px; height: 14px; border-radius: 7px; background: #e5352b; opacity: .8; }
+  .wrap { position: absolute; inset: 0; padding: 230px 80px 260px; display: flex; flex-direction: column; align-items: center; text-align: center; }
+  .brand { display: flex; align-items: center; gap: 26px; }
+  .brand img { width: 130px; height: 130px; }
+  .brand span { font: 400 80px/1 Russo; letter-spacing: 1px; } .brand b { color: #ffc928; font-weight: 400; }
+  h1 { font: 400 86px/1 Russo; margin: 36px 0 20px; }
+  h1 em { font-style: normal; color: #ffc928; }
+  .sub { font-size: 36px; line-height: 1.35; color: #c7cfdf; margin: 0 0 30px; font-weight: 500; }
+  .card { width: 100%; background: rgba(24,30,43,.92); border: 2px solid #2a3346; border-radius: 32px; padding: 28px 32px; text-align: left;
+    box-shadow: 0 30px 80px rgba(0,0,0,.45); }
+  .card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .card-head b { font: 400 40px Russo; } .pill { font: 700 28px Inter; color: #ffc928; background: rgba(255,201,40,.16); padding: 8px 20px; border-radius: 999px; }
+  .row { display: flex; align-items: center; gap: 24px; padding: 10px 18px; border-radius: 20px; font-size: 36px; font-weight: 700; }
+  .row + .row { margin-top: 8px; }
+  .rank { width: 60px; height: 60px; border-radius: 18px; display: grid; place-items: center; font: 400 32px Russo; background: #1f2737; flex: none; }
+  .r1 { background: linear-gradient(180deg,#ffe27a,#e9b100); color: #3a2a00; } .r2 { background: linear-gradient(180deg,#eef3fb,#aab6c9); color: #222b38; }
+  .r3 { background: linear-gradient(180deg,#f2b77f,#c27236); color: #3a1d05; }
+  .name { flex: 1; } .t { font: 400 38px Russo; }
+  .blur { color: transparent; text-shadow: 0 0 18px rgba(238,241,247,.85); }
+  .you { background: rgba(255,201,40,.13); border: 3px dashed #ffc928; }
+  .you .name { color: #ffc928; }
+  .feats { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; width: 100%; margin: 26px 0 0; }
+  .feat { display: flex; align-items: center; gap: 16px; text-align: left; font-size: 32px; font-weight: 700; line-height: 1.2;
+    background: rgba(255,255,255,.04); border: 2px solid #232b3c; border-radius: 22px; padding: 20px; }
+  .dot { width: 52px; height: 52px; border-radius: 50%; flex: none; display: grid; place-items: center; background: #e5352b; }
+  .dot svg { width: 30px; height: 30px; }
+  .cta { margin-top: 34px; display: flex; flex-direction: column; align-items: center; gap: 18px; }
+  .cta .go { font: 700 32px Inter; color: #c7cfdf; letter-spacing: .5px; }
+  .url { font: 400 68px Russo; padding: 26px 56px; border-radius: 999px; color: #fff;
+    background: linear-gradient(180deg,#ff4d3d,#e5352b); box-shadow: 0 20px 60px rgba(229,53,43,.5); }
+  .bar { position: absolute; left: 0; right: 0; bottom: 0; height: 22px; opacity: .55;
+    background: repeating-linear-gradient(90deg,#fff 0 44px,#111 44px 88px); }
+</style></head>
+<body>
+  <div class="band a"></div><div class="band b"></div>
+  
+  <div class="wrap">
+    <div class="brand"><img src="../discord-avatar-icon.png" alt=""><span>MK8DX<b>Times</b></span></div>
+    <h1>How fast are you<br>on <em>Mario Kart 8<br>Deluxe</em>?</h1>
+    <p class="sub">Submit your time trials and climb the<br>world leaderboard — 150cc &amp; 200cc.</p>
+
+    <div class="card">
+      <div class="card-head"><b>Track leaderboard</b><span class="pill">200cc</span></div>
+      <div class="row"><span class="rank r1">1</span><span class="name blur">Speedster</span><span class="t">1:5?.???</span></div>
+      <div class="row"><span class="rank r2">2</span><span class="name blur">Driftking</span><span class="t">1:5?.???</span></div>
+      <div class="row you"><span class="rank r3">3</span><span class="name">YOUR NAME HERE</span><span class="t">?:??.???</span></div>
+    </div>
+
+    <div class="feats">
+      <div class="feat"><span class="dot"><svg viewBox="0 0 24 24" fill="#fff"><path d="M6 2h12v3h3v3a5 5 0 0 1-5 5h-.3A6 6 0 0 1 13 15.9V19h4v3H7v-3h4v-3.1A6 6 0 0 1 8.3 13H8a5 5 0 0 1-5-5V5h3V2zm0 5H5v1a3 3 0 0 0 1.4 2.5A6 6 0 0 1 6 8V7zm12 0v1c0 .9-.1 1.7-.4 2.5A3 3 0 0 0 19 8V7h-1z"/></svg></span>World records</div>
+      <div class="feat"><span class="dot" style="background:#2d8cff"><svg viewBox="0 0 24 24" fill="#fff"><path d="M12 2a7 7 0 0 1 7 7c0 5-7 13-7 13S5 14 5 9a7 7 0 0 1 7-7zm0 4.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/></svg></span>All 96 tracks</div>
+      <div class="feat"><span class="dot" style="background:#2ecc71"><svg viewBox="0 0 24 24" fill="#fff"><path d="M9.5 16.2 5.3 12l-1.4 1.4 5.6 5.6L20.1 8.4 18.7 7z"/></svg></span>Verified times</div>
+      <div class="feat"><span class="dot" style="background:#ffc928"><svg viewBox="0 0 24 24" fill="#1b1400"><path d="M12 22a2.5 2.5 0 0 0 2.5-2.5h-5A2.5 2.5 0 0 0 12 22zm7-6V11a7 7 0 0 0-5.5-6.8V3a1.5 1.5 0 0 0-3 0v1.2A7 7 0 0 0 5 11v5l-2 2v1h18v-1l-2-2z"/></svg></span>Overtake alerts</div>
+    </div>
+
+    <div class="cta">
+      <span class="go">FREE · SUBMIT YOUR TIME NOW</span>
+      <span class="url">mk8dxtimes.com</span>
+    </div>
+  </div>
+  <div class="bar"></div>
+</body></html>
