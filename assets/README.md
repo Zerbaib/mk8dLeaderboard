@@ -10,5 +10,5 @@ Transparent background. Original artwork: stopwatch + checkered flag. No Nintend
 
 ## Instagram story
 
-`instagram/story.png` (1080×1920) is rendered from `instagram/story.html`. To change the text, edit the HTML and
+`instagram/story.png` (English) and `instagram/story-fr.png` (French), 1080×1920, are rendered from the `.html` files next to them. To change the text, edit the HTML and
 take a 1080×1920 screenshot of it (any browser at that size). The top and bottom 230 px are kept free for Instagram's interface.
