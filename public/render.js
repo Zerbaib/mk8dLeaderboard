@@ -83,6 +83,7 @@
       if (n === 1 && p0 === 'regions') return { view: 'regions', cc };
       if (n === 1 && p0 === 'submit') return { view: 'submit', track: trackById[q.get('track')] ? q.get('track') : '', fresh: q.has('new') };
       if (n === 1 && ['terms', 'privacy', 'legal', 'points'].includes(p0)) return { view: p0 };
+      if (n === 1 && p0 === 'account') return { view: 'account', error: q.get('error') || '' };
       return { view: 'notfound' };
     }
 
@@ -332,22 +333,31 @@
     }
 
     // The form is rendered on the server too; the browser fills in the saved player name and handles it
-    function submit(route, data, saved = {}) {
+    // extra: { saved: last values typed in this browser, account: logged-in player }
+    function submit(route, data, extra = {}) {
+      const saved = extra.saved || {};
+      const account = extra.account || null;
       const cc = saved.cc === 200 ? 200 : 150;
+      const identity = account
+        ? `<div class="notice account-notice">Submitting as ${flag(account.country)}<b>${esc(account.name)}</b> (${esc(countryName(account.country))}).
+            Your time goes straight to the moderators, no <code>/verif</code> needed. <a href="/account">Change on your account page</a></div>`
+        : `<div class="notice login-hint">${DISCORD_ICON}<span><a href="/auth/discord?next=/submit">Log in with Discord</a> to skip the <code>/verif</code> step on every submission.</span></div>
+      <div class="row">
+        <div class="field"><label for="player_name">Player name</label><input id="player_name" name="player_name" required maxlength="32" value="${esc(saved.player_name || '')}" placeholder="Your nickname" autocomplete="nickname"></div>
+        <div class="field"><label for="countrySel">Country</label><select id="countrySel" name="country" required>${countryOptions(saved.country || '', 'Select your country')}</select>
+          <div class="hint" id="regionHint"></div></div>
+      </div>`;
       return {
         title: `Submit a Mario Kart 8 Deluxe time trial record${suffix}`,
         description: 'Submit your Mario Kart 8 Deluxe time trial time (150cc or 200cc) with a video or screenshot proof. Verified by our moderators.',
         crumbs: [crumb('Submit a time', '/submit')],
         html: `
-    <div class="page-head"><div><h1>Submit a time</h1><p>After sending, you'll confirm it's you on our Discord server with <code>/verif</code>. A moderator then checks your time before it appears on the leaderboard.</p></div></div>
+    <div class="page-head"><div><h1>Submit a time</h1><p>${account ? 'A moderator checks your time before it appears on the leaderboard.'
+      : "After sending, you'll confirm it's you on our Discord server with <code>/verif</code>. A moderator then checks your time before it appears on the leaderboard."}</p></div></div>
     <form id="form" class="card card-pad form-card" novalidate>
       <div id="msg"></div>
       <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
-      <div class="row">
-        <div class="field"><label for="player_name">Player name</label><input id="player_name" name="player_name" required maxlength="32" value="${esc(saved.player_name || '')}" placeholder="Your nickname" autocomplete="nickname"></div>
-        <div class="field"><label for="countrySel">Country</label><select id="countrySel" name="country" required>${countryOptions(saved.country || '', 'Select your country')}</select>
-          <div class="hint" id="regionHint"></div></div>
-      </div>
+      ${identity}
       <div class="row">
         <div class="field"><label for="track_id">Track</label><select id="track_id" name="track_id" required>
           <option value="">Select a track</option>
@@ -367,7 +377,9 @@
           <span id="fileLabel">Drop a screenshot or video here, or click to choose one (max 50 MB)</span></label>
         <div class="hint">Screenshot of the ghost / results screen, or a YouTube, Twitch or X video.</div></div>
       <div class="field"><label for="comment">Comment <span class="muted">(optional)</span></label><textarea id="comment" name="comment" rows="2" maxlength="500" placeholder="Combo used, useful info…"></textarea></div>
-      <div class="notice">Once approved, your <b>player name, country, time and proof</b> are shown publicly on this site. You'll need a Discord account to confirm your submission; it is then sent to our moderators through Discord. See the <a href="/privacy">Privacy Policy</a>.</div>
+      <div class="notice">Once approved, your <b>player name, country, time and proof</b> are shown publicly on this site. ${account
+    ? 'Your submission is sent to our moderators through Discord, with your Discord account.'
+    : "You'll need a Discord account to confirm your submission; it is then sent to our moderators through Discord."} See the <a href="/privacy">Privacy Policy</a>.</div>
       <div class="field"><label class="consent"><input type="checkbox" name="accept_terms" required>
         <span>I confirm this time was set by me, without cheats or modifications, and I accept the <a href="/terms" target="_blank">Terms of Use</a> and the <a href="/privacy" target="_blank">Privacy Policy</a>.</span></label></div>
       <button class="btn btn-primary" id="sendBtn" type="submit">Send for review</button>
@@ -392,7 +404,7 @@
     <h2>2. Acceptance</h2>
     <p>By browsing the Site you agree to these Terms. Submitting a time requires you to explicitly accept them together with the <a href="/privacy">Privacy Policy</a>. If you do not agree, please do not use the Site.</p>
     <h2>3. Access to the Site</h2>
-    <p>The Site is free and does not require an account. The Publisher makes reasonable efforts to keep it available but does not guarantee uninterrupted access and may suspend, modify or close it at any time, in particular for maintenance.</p>
+    <p>The Site is free. Browsing does not require an account; an optional account can be created by logging in with Discord. The Publisher makes reasonable efforts to keep it available but does not guarantee uninterrupted access and may suspend, modify or close it at any time, in particular for maintenance.</p>
     <p>If you are under the age of digital consent in your country (15 in France, 13 to 16 elsewhere in the EU), you must have the permission of a parent or legal guardian before submitting a time.</p>
     <h2>4. Submitting times</h2>
     <p>When you submit a time, you confirm that:</p>
@@ -402,7 +414,7 @@
       <li>the proof you provide is genuine, unedited and shows the submitted time;</li>
       <li>you have the right to share the proof (e.g. you made the video or screenshot yourself) and it does not infringe anyone else's rights.</li>
     </ul>
-    <p>Each submission must be confirmed with a Discord account, using the <code>/verif</code> command on our Discord server. The first verified submission links your player name to your Discord account: afterwards, only this account can submit times under that name, and each Discord account can only be linked to one player name. To change this link, contact a moderator.</p>
+    <p>Each submission must be confirmed with a Discord account: either by logging in with Discord on the Site, or by using the <code>/verif</code> command on our Discord server. The first verified submission links your player name to your Discord account: afterwards, only this account can submit times under that name, and each Discord account can only be linked to one player name. Your player name can be changed from your account page (once every 7 days); to link it to another Discord account, contact a moderator. You can delete your account and all your times at any time from your account page.</p>
     <p>Only one player name may be used per person. Do not submit times under someone else's name.</p>
     <h2>5. Moderation</h2>
     <p>Every submission is reviewed by volunteer moderators before publication. Moderators may approve or reject any submission at their sole discretion, may ask for additional proof, and may remove an approved time or a player from the leaderboard at any time if a rule appears to have been broken. Moderation decisions are not subject to any compensation.</p>
@@ -441,6 +453,7 @@
       <li>your proof: a link or an uploaded image/video — note that a proof may contain your in-game name, your voice or your image if you include them;</li>
       <li>an optional comment;</li>
       <li>your <b>Discord user ID and username</b>, when you confirm the submission with <code>/verif</code>;</li>
+      <li>if you <b>log in with Discord</b>: your Discord user ID, username and avatar. We never receive your email address or password, and we do not keep the access token Discord gives us;</li>
       <li>the date of submission, and the review result (approved/rejected, moderator name, optional reason).</li>
     </ul>
     <p><b>Technical data:</b> your IP address is used temporarily, in memory only, to limit the number of submissions (anti-spam). It is never written to our database and is forgotten within 10 minutes. Our hosting provider may keep standard server logs for security purposes.</p>
@@ -469,12 +482,15 @@
       <li><b>Pending submissions</b>: kept until they are reviewed. Submissions that are never confirmed on Discord are deleted, including any uploaded file, after 24 hours.</li>
       <li><b>Verification codes</b>: valid for 10 minutes, then deleted.</li>
       <li><b>Link between your player name and your Discord account</b>: kept as long as your player profile exists.</li>
+      <li><b>Account</b>: kept until you delete it from your account page, which immediately deletes your profile, all your times and your proof files.</li>
+      <li><b>Login sessions</b>: 30 days, or until you log out.</li>
       <li>The Discord review message may remain in the moderators' private channel; it is deleted on request.</li>
     </ul>
     <h2>7. Cookies and local storage</h2>
-    <p>The Site does not use cookies or trackers. It uses your browser's local storage, only on your device, to remember your player name and country (to pre-fill the form). You can clear it at any time from your browser settings. Fonts and flags are hosted on our own server: no third-party service is contacted while you browse, except external proof links you choose to open.</p>
+    <p>The Site uses no tracking or advertising cookies. Only if you log in with Discord, it sets two <b>strictly necessary</b> cookies (which do not require consent): <code>mk8_session</code>, which keeps you logged in for 30 days or until you log out, and <code>mk8_oauth</code>, which lasts 10 minutes during the login and protects it against forged requests. On your account page, your Discord avatar is loaded from Discord's servers.</p>
+    <p> It uses your browser's local storage, only on your device, to remember your player name and country (to pre-fill the form). You can clear it at any time from your browser settings. Fonts and flags are hosted on our own server: no third-party service is contacted while you browse, except external proof links you choose to open.</p>
     <h2>8. Your rights</h2>
-    <p>You have the right to access, rectify and erase your data, to restrict or object to its processing, and to data portability. To exercise them — for example to change your player name or remove all your times — contact ${mail(L.contactEmail)}, indicating your player name. As we have no accounts, we may ask you to prove that you own the player name, for example by contacting us from the Discord account linked to it. We answer within one month.</p>
+    <p>You have the right to access, rectify and erase your data, to restrict or object to its processing, and to data portability. If you log in with Discord, you can change your player name and country, and delete your account and all your times yourself, on your account page. Otherwise, or for any other request, contact ${mail(L.contactEmail)}, indicating your player name. As we have no accounts, we may ask you to prove that you own the player name, for example by contacting us from the Discord account linked to it. We answer within one month.</p>
     <p>You also have the right to lodge a complaint with a supervisory authority, such as the CNIL in France (<a href="https://www.cnil.fr" target="_blank" rel="noopener">cnil.fr</a>) or the authority of your country of residence.</p>
     <h2>9. Security</h2>
     <p>We take reasonable measures to protect your data (restricted access to the server and database, moderation limited to authorised Discord members). No system is perfectly secure, however.</p>
@@ -514,6 +530,14 @@
     </ul>
     <p>When a new record is set, everyone's points on that track are recalculated.</p>`);
 
+    // Personal page: the browser fills it in (see app.js), search engines do not index it
+    function account() {
+      return {
+        title: `My account${suffix}`, description: `Log in to ${SITE} with Discord.`, crumbs: [], noindex: true,
+        html: '<div class="page-head"><div><h1>My account</h1><p>Loading…</p></div></div>',
+      };
+    }
+
     function notfound() {
       return {
         title: `Page not found${suffix}`, description: 'This page does not exist.', crumbs: [], noindex: true,
@@ -521,7 +545,7 @@
       };
     }
 
-    const VIEWS = { home, tracks, track, players, player, countries, regions, submit, terms, privacy, legal, points, notfound };
+    const VIEWS = { home, tracks, track, players, player, countries, regions, submit, terms, privacy, legal, points, account, notfound };
 
     // Renders a route with its data
     function page(route, data, extra) {
@@ -537,6 +561,6 @@
       return { ...p, jsonLd, canonical: `${L.siteUrl}${canonicalPath(route)}` };
     }
 
-    return { parseRoute, canonicalPath, fromLegacyHash, page, url, esc, fmt, regionName, DISCORD_ICON };
+    return { parseRoute, canonicalPath, fromLegacyHash, page, url, esc, fmt, regionName, countryName, countryOptions, flag, DISCORD_ICON };
   };
 }));

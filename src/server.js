@@ -8,6 +8,7 @@ const store = require('./db');
 const discord = require('./discord');
 const webhook = require('./webhook');
 const createPages = require('./pages');
+const auth = require('./auth');
 const { TRACKS, TRACK_BY_ID, CUPS } = require('./tracks');
 const { COUNTRIES, COUNTRY_BY_CODE, REGIONS, REGION_BY_ID } = require('./countries');
 
@@ -28,7 +29,7 @@ const LEGAL = {
   hostAddress: process.env.LEGAL_HOST_ADDRESS || '[Hosting provider address]',
   discordInvite: process.env.DISCORD_INVITE_URL || '',
   rejectedRetentionDays: Number(process.env.REJECTED_RETENTION_DAYS || 30),
-  updated: '2026-11-14',
+  updated: '2026-11-16',
 };
 
 const ALLOWED_EXT = /\.(png|jpe?g|gif|webp|mp4|mov|webm|mkv)$/i;
@@ -66,6 +67,7 @@ const verifyLimited = limiter(20); // code attempts per IP
 const app = express();
 app.set('trust proxy', true);
 app.use(express.json());
+auth.mount(app); // login with Discord, /api/me and /api/account/*
 app.use(express.static(path.join(__dirname, '..', 'public'), { index: false }));
 app.use('/uploads', express.static(UPLOAD_DIR, { maxAge: '7d' }));
 // Self-hosted flags and fonts: no request is made to third-party servers
@@ -105,8 +107,12 @@ app.post('/api/submissions', (req, res) => {
     if (b.website) return fail(400, 'Invalid request.'); // anti-spam honeypot
     if (rateLimited(req.ip)) return fail(429, 'Too many submissions, please try again in a few minutes.');
 
-    const playerName = clean(b.player_name, 32);
-    const country = clean(b.country, 2).toUpperCase();
+    // Logged-in players submit under their account: no /verif needed
+    const account = req.user ? store.accountPlayer(req.user.discord_id) : null;
+    if (req.user && !account) return fail(400, 'Choose your player name on your account page first.');
+    if (account && !auth.sameOrigin(req)) return fail(403, 'Forbidden');
+    const playerName = account ? account.name : clean(b.player_name, 32);
+    const country = account ? account.country : clean(b.country, 2).toUpperCase();
     const trackId = clean(b.track_id, 60);
     const cc = Number(b.cc);
     const timeMs = store.parseTime(b.time);
@@ -127,12 +133,16 @@ app.post('/api/submissions', (req, res) => {
 
     // The submission is only sent to the moderators once the player has verified it with /verif on Discord.
     // Without a configured bot (local tests), it is sent right away.
-    const needsVerification = discord.isEnabled();
+    const needsVerification = discord.isEnabled() && !account;
     const token = needsVerification ? crypto.randomBytes(24).toString('hex') : null;
-    const sub = store.createSubmission({
+    let sub = store.createSubmission({
       player_name: playerName, country, track_id: trackId, cc, time_ms: timeMs,
       proof_url: proofUrl, proof_file: req.file ? req.file.filename : null, comment, verify_token: token,
     });
+    if (account) {
+      sub = store.setSubmissionDiscord(sub.id, req.user.discord_id, req.user.discord_name);
+      discord.notifyPending(sub);
+    }
 
     if (!needsVerification) await sendToModerators(sub);
     res.status(201).json({

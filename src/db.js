@@ -65,8 +65,19 @@ if (addColumn('submissions', 'verified_at', 'TEXT')) {
   db.exec('UPDATE submissions SET verified_at = created_at');
 }
 addColumn('players', 'discord_id', 'TEXT');
+addColumn('players', 'name_changed_at', 'TEXT');
 db.exec(`
 CREATE UNIQUE INDEX IF NOT EXISTS idx_players_discord ON players (discord_id) WHERE discord_id IS NOT NULL;
+-- Login sessions (Discord accounts). Only a hash of the session id is stored.
+CREATE TABLE IF NOT EXISTS sessions (
+  id_hash        TEXT PRIMARY KEY,
+  discord_id     TEXT NOT NULL,
+  discord_name   TEXT NOT NULL,
+  discord_avatar TEXT,
+  created_at     INTEGER NOT NULL,
+  expires_at     INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_discord ON sessions (discord_id);
 CREATE TABLE IF NOT EXISTS verification_codes (
   code         TEXT PRIMARY KEY,
   discord_id   TEXT NOT NULL,
@@ -138,6 +149,12 @@ function getSubmission(id) {
 function unsentSubmissions() {
   return db.prepare(`SELECT * FROM submissions WHERE status = 'pending' AND verified_at IS NOT NULL
     AND discord_message_id IS NULL ORDER BY id`).all();
+}
+
+// Links a submission made from a logged-in account to its Discord account
+function setSubmissionDiscord(id, discordId, discordName) {
+  db.prepare('UPDATE submissions SET discord_id = ?, discord_name = ? WHERE id = ?').run(discordId, discordName, id);
+  return getSubmission(id);
 }
 
 function setDiscordMessage(id, messageId) {
@@ -403,10 +420,11 @@ function searchPlayers(q) {
 
 function stats() {
   return db.prepare(`SELECT
-      (SELECT COUNT(*) FROM players) AS players,
+      (SELECT COUNT(DISTINCT player_id) FROM submissions WHERE status = 'approved') AS players,
       (SELECT COUNT(*) FROM submissions WHERE status = 'approved') AS approved,
       (SELECT COUNT(*) FROM submissions WHERE status = 'pending' AND verified_at IS NOT NULL) AS pending,
-      (SELECT COUNT(DISTINCT country) FROM players) AS countries`).get();
+      (SELECT COUNT(DISTINCT p.country) FROM players p
+        WHERE EXISTS (SELECT 1 FROM submissions s WHERE s.player_id = p.id AND s.status = 'approved')) AS countries`).get();
 }
 
 function recentRecords(limit = 10) {
@@ -415,9 +433,115 @@ function recentRecords(limit = 10) {
     WHERE s.status = 'approved' ORDER BY s.reviewed_at DESC, s.id DESC LIMIT ?`).all(limit);
 }
 
+// ---------- Accounts (login with Discord) ----------
+const SESSION_DAYS = 30;
+const RENAME_COOLDOWN_DAYS = 7;
+const hashId = (id) => crypto.createHash('sha256').update(id).digest('hex');
+
+// Returns the session id to put in the cookie
+function createSession(user) {
+  const id = crypto.randomBytes(32).toString('base64url');
+  const now = Date.now();
+  db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(now);
+  db.prepare(`INSERT INTO sessions (id_hash, discord_id, discord_name, discord_avatar, created_at, expires_at)
+              VALUES (?, ?, ?, ?, ?, ?)`).run(hashId(id), user.id, user.name, user.avatar || null, now, now + SESSION_DAYS * 86400000);
+  return { id, maxAge: SESSION_DAYS * 86400 };
+}
+
+function getSession(id) {
+  if (!id) return null;
+  return db.prepare('SELECT discord_id, discord_name, discord_avatar FROM sessions WHERE id_hash = ? AND expires_at > ?')
+    .get(hashId(id), Date.now()) || null;
+}
+
+function deleteSession(id) {
+  if (id) db.prepare('DELETE FROM sessions WHERE id_hash = ?').run(hashId(id));
+}
+
+const accountPlayer = (discordId) => db.prepare('SELECT * FROM players WHERE discord_id = ?').get(discordId) || null;
+
+const validName = (name) => {
+  if (name.length < 2 || name.length > 32) return 'Your player name must be between 2 and 32 characters long.';
+  if (/[<>@#`]|^\s|\s$/.test(name)) return 'Your player name contains forbidden characters.';
+  return null;
+};
+
+// What the account page needs
+function accountInfo(discordId) {
+  const player = accountPlayer(discordId);
+  const submissions = db.prepare(`SELECT id, track_id, cc, time_ms, status, reject_reason, created_at, reviewed_at
+    FROM submissions WHERE discord_id = ? OR (player_id IS NOT NULL AND player_id = ?)
+    ORDER BY id DESC LIMIT 50`).all(discordId, player ? player.id : -1);
+  let renameAt = null;
+  if (player && player.name_changed_at) {
+    const next = new Date(`${player.name_changed_at.replace(' ', 'T')}Z`).getTime() + RENAME_COOLDOWN_DAYS * 86400000;
+    if (next > Date.now()) renameAt = new Date(next).toISOString();
+  }
+  return { player, submissions, renameAt };
+}
+
+// First login: chooses a player name (or claims an existing one, with the same rules as /verif)
+const setupTx = db.transaction((discordId, name, country) => {
+  if (accountPlayer(discordId)) return { error: 'Your account already has a player name.' };
+  const invalid = validName(name);
+  if (invalid) return { error: invalid };
+  const err = claimError(name, discordId);
+  if (err) return { error: err };
+  const existing = findPlayer.get(name);
+  if (existing) {
+    db.prepare('UPDATE players SET discord_id = ?, country = ? WHERE id = ?').run(discordId, country, existing.id);
+  } else {
+    db.prepare('INSERT INTO players (name, country, discord_id) VALUES (?, ?, ?)').run(name, country, discordId);
+  }
+  return { player: accountPlayer(discordId) };
+});
+const setupAccount = (discordId, name, country) => setupTx(discordId, name, country);
+
+const renameTx = db.transaction((discordId, name) => {
+  const player = accountPlayer(discordId);
+  if (!player) return { error: 'Choose a player name first.' };
+  const invalid = validName(name);
+  if (invalid) return { error: invalid };
+  if (name === player.name) return { player };
+  const { renameAt } = accountInfo(discordId);
+  if (renameAt) return { error: `You can change your player name again on ${renameAt.slice(0, 10)}.` };
+  const taken = db.prepare('SELECT 1 FROM players WHERE name = ? AND id != ?').get(name, player.id)
+    || db.prepare(`SELECT 1 FROM submissions WHERE player_name = ? COLLATE NOCASE AND status = 'pending'
+                   AND (discord_id IS NULL OR discord_id != ?) LIMIT 1`).get(name, discordId);
+  if (taken) return { error: `The player name "${name}" is already taken.` };
+  db.prepare("UPDATE players SET name = ?, name_changed_at = datetime('now') WHERE id = ?").run(name, player.id);
+  db.prepare('UPDATE submissions SET player_name = ? WHERE player_id = ? OR discord_id = ?').run(name, player.id, discordId);
+  return { player: accountPlayer(discordId) };
+});
+const renameAccount = (discordId, name) => renameTx(discordId, name);
+
+function setAccountCountry(discordId, country) {
+  const player = accountPlayer(discordId);
+  if (!player) return { error: 'Choose a player name first.' };
+  db.prepare('UPDATE players SET country = ? WHERE id = ?').run(country, player.id);
+  db.prepare("UPDATE submissions SET country = ? WHERE (player_id = ? OR discord_id = ?) AND status = 'pending'").run(country, player.id, discordId);
+  return { player: accountPlayer(discordId) };
+}
+
+// Deletes the player, all their submissions, sessions and codes; returns the proof files to remove
+const deleteTx = db.transaction((discordId) => {
+  const player = accountPlayer(discordId);
+  const subs = db.prepare('SELECT id, proof_file FROM submissions WHERE discord_id = ? OR (player_id IS NOT NULL AND player_id = ?)')
+    .all(discordId, player ? player.id : -1);
+  const del = db.prepare('DELETE FROM submissions WHERE id = ?');
+  subs.forEach((r) => del.run(r.id));
+  if (player) db.prepare('DELETE FROM players WHERE id = ?').run(player.id);
+  db.prepare('DELETE FROM sessions WHERE discord_id = ?').run(discordId);
+  db.prepare('DELETE FROM verification_codes WHERE discord_id = ?').run(discordId);
+  return { deleted: subs.length, files: subs.map((r) => r.proof_file).filter(Boolean) };
+});
+const deleteAccount = (discordId) => deleteTx(discordId);
+
 module.exports = {
   db, parseTime, formatTime, TRACK_BY_ID,
-  createSubmission, getSubmission, unsentSubmissions, rankingChange, TOP, purgeRejected, purgeUnverified, issueCode, verifySubmission, claimError, linkPlayer, setDiscordMessage, approveSubmission, rejectSubmission,
+  createSubmission, getSubmission, setSubmissionDiscord, unsentSubmissions, rankingChange, TOP, purgeRejected, purgeUnverified, issueCode, verifySubmission, claimError, linkPlayer, setDiscordMessage, approveSubmission, rejectSubmission,
   trackLeaderboard, worldRecords, playerRanking, countryRanking, regionRanking, playerProfile, searchPlayers,
   stats, recentRecords,
+  createSession, getSession, deleteSession, accountPlayer, accountInfo, setupAccount, renameAccount, setAccountCountry, deleteAccount,
+  RENAME_COOLDOWN_DAYS,
 };

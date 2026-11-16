@@ -67,6 +67,30 @@ and adds them to the database as approved times (player, country, time, date of 
 
 The data belongs to mkwrs.com: credit them and ask their maintainers before importing regularly.
 
+## Accounts (login with Discord)
+
+Players can log in on `/account` with their Discord account (OAuth2, `identify` scope only: Discord ID, username, avatar).
+The account is created automatically on the first login; the player then chooses a player name and a country
+(or gets back the name they already verified with `/verif`).
+
+Logged-in players:
+
+- submit times **without `/verif`**: the submission goes straight to the moderators, with their Discord account shown;
+- follow their submissions (pending / approved / rejected) on their account page;
+- change their player name (once every 7 days, all their times follow) and their country;
+- delete their account: profile, all times (approved ones included) and proof files are deleted immediately.
+
+Players without an account can still submit with the `/verif` code, as before.
+
+Setup:
+
+1. Developer Portal → your application → **OAuth2**: copy the **Client ID** and **Client Secret** into
+   `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET`.
+2. In the same page, **Redirects** → add `https://your-domain/auth/discord/callback` (it must match `PUBLIC_URL` exactly).
+
+Security: the session cookie is `HttpOnly`, `SameSite=Lax` and `Secure` over https; only a hash of the session id is stored;
+the OAuth `state` is checked; account changes are refused when the request comes from another website.
+
 ## Record announcements (webhook)
 
 Every time an approved time **enters the top 10** of a track (and improves the player's best time), a message is posted
@@ -153,6 +177,7 @@ What the code does to match the Privacy Policy:
 | `DISCORD_CHANNEL_ID` | Channel where submissions are posted for review |
 | `DISCORD_MOD_ROLE_ID` | Role allowed to review (optional) |
 | `DISCORD_BOT_STATUS` | Bot status text (default `🚀 go on mk8dxtimes.com`) |
+| `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET` | Login with Discord (OAuth2) |
 | `DISCORD_RECORDS_WEBHOOK_URL` | Webhook where new records are announced (optional) |
 | `DISCORD_INVITE_URL` | Public invite shown on the Terms page (optional) |
 | `LEGAL_SITE_URL` | Site address shown in the Terms of Use (defaults to `PUBLIC_URL`) |
@@ -177,6 +202,7 @@ For each track and engine class, only a player's **best approved time** counts.
 ```
 src/server.js             Express API, submissions (uploads via multer), HTML pages
 src/pages.js              Server-side rendering, sitemap.xml, robots.txt
+src/auth.js               Login with Discord, sessions, account API
 src/template.html         HTML shell of every page
 src/db.js                 SQLite schema and leaderboard queries
 src/discord.js            Discord bot: posts submissions, Approve/Reject buttons

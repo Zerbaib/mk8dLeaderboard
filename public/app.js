@@ -14,6 +14,35 @@ const session = {
   del(k) { try { sessionStorage.removeItem(k); } catch { /* ignore */ } },
 };
 
+// ---------- Logged-in user (login with Discord) ----------
+let me = { user: null };
+let mePromise = null;
+function loadMe() {
+  mePromise = fetch('/api/me', { credentials: 'same-origin' }).then((r) => r.json()).catch(() => ({ user: null }))
+    .then((m) => { me = m; updateAccountLink(); return m; });
+  return mePromise;
+}
+function updateAccountLink() {
+  const a = document.getElementById('accountLink');
+  if (!a) return;
+  if (me.user) {
+    const label = me.player ? me.player.name : me.user.name;
+    a.innerHTML = `${me.user.avatar ? `<img src="${esc(me.user.avatar)}" alt="" width="28" height="28">` : ''}<span>${esc(label)}</span>`;
+    a.classList.add('logged');
+    a.setAttribute('aria-label', 'My account');
+  } else {
+    a.textContent = 'Log in';
+    a.classList.remove('logged');
+    a.removeAttribute('aria-label');
+  }
+}
+async function postJson(href, body) {
+  const r = await fetch(href, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || 'Something went wrong.');
+  return data;
+}
+
 // ---------- Head (title, description, canonical, social previews) ----------
 function setMeta(selector, attr, value) {
   const el = document.head.querySelector(selector);
@@ -49,7 +78,7 @@ document.addEventListener('click', (e) => {
   if (!a || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   if (a.target || a.hasAttribute('download')) return;
   const href = a.getAttribute('href');
-  if (!href.startsWith('/') || href.startsWith('//') || /^\/(api|uploads|flags|fonts)\//.test(href)) return;
+  if (!href.startsWith('/') || href.startsWith('//') || /^\/(api|uploads|flags|fonts|auth)\//.test(href)) return;
   e.preventDefault();
   if (href !== location.pathname + location.search) navigate(href);
 });
@@ -63,7 +92,9 @@ async function render({ scroll = true } = {}) {
   updateNav(route);
 
   if (route.view === 'submit') {
-    showSubmit(route);
+    await showSubmit(route);
+  } else if (route.view === 'account') {
+    await viewAccount(route);
   } else {
     $app.classList.add('loading');
     let data = {};
@@ -159,21 +190,26 @@ function viewVerify(p) {
 }
 
 // ---------- Submission form ----------
-function showSubmit(route) {
+async function showSubmit(route) {
+  await mePromise;
+  const account = me.user ? me.player : null;
+  if (me.user && !me.player) { navigate('/account', { replace: true }); return; }
   const pending = session.get('pendingVerify');
-  if (pending && !route.fresh) { viewVerify(pending); return; }
+  if (pending && !route.fresh && !account) { viewVerify(pending); return; }
   const saved = (() => { try { return JSON.parse(localStorage.getItem('player') || '{}'); } catch { return {}; } })();
-  const p = R.page(route, {}, saved);
+  const p = R.page(route, {}, { saved, account });
   $app.innerHTML = p.html;
   updateHead(p);
 
   const form = $app.querySelector('#form');
   const countrySel = form.querySelector('#countrySel');
-  const showRegion = () => {
-    const c = meta.countries.find((x) => x.code === countrySel.value);
-    form.querySelector('#regionHint').textContent = c ? `Region: ${R.regionName(c.region)}` : '';
-  };
-  countrySel.addEventListener('change', showRegion); showRegion();
+  if (countrySel) {
+    const showRegion = () => {
+      const c = meta.countries.find((x) => x.code === countrySel.value);
+      form.querySelector('#regionHint').textContent = c ? `Region: ${R.regionName(c.region)}` : '';
+    };
+    countrySel.addEventListener('change', showRegion); showRegion();
+  }
 
   form.querySelectorAll('#ccSeg button').forEach((b) => b.addEventListener('click', () => {
     form.querySelectorAll('#ccSeg button').forEach((x) => x.classList.toggle('on', x === b));
@@ -199,19 +235,20 @@ function showSubmit(route) {
     const fd = new FormData(form);
     if (proofMode === 'url') fd.delete('proof_file'); else fd.delete('proof_url');
     const error = (t) => { msg.innerHTML = `<div class="alert alert-err">${esc(t)}</div>`; msg.scrollIntoView({ behavior: 'smooth', block: 'center' }); };
-    if (!fd.get('country')) return error('Please select your country.');
+    if (!account && !fd.get('country')) return error('Please select your country.');
     if (!/^\d{1,2}:[0-5]\d[.,]\d{3}$/.test(fd.get('time').trim())) return error('Invalid time. Expected format: 1:45.123');
     if (!form.accept_terms.checked) return error('You must accept the Terms of Use and the Privacy Policy.');
     btn.disabled = true; btn.textContent = 'Sending…';
     // Open the Discord invite in a new tab. The tab must be opened during the click (popup blockers),
     // so it starts blank and is pointed at the invite once the submission is accepted.
     const invite = meta.legal.discordInvite;
-    const tab = invite && !localGet('discordJoined', '') ? window.open('', '_blank') : null;
+    const tab = !account && invite && !localGet('discordJoined', '') ? window.open('', '_blank') : null;
     try {
       const r = await fetch('/api/submissions', { method: 'POST', body: fd });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error);
-      localSet('player', JSON.stringify({ player_name: fd.get('player_name'), country: fd.get('country'), cc: Number(fd.get('cc')) }));
+      localSet('player', JSON.stringify(account ? { ...saved, cc: Number(fd.get('cc')) }
+        : { player_name: fd.get('player_name'), country: fd.get('country'), cc: Number(fd.get('cc')) }));
       if (data.verifyRequired) {
         if (tab) { tab.opener = null; tab.location.href = invite; }
         const pending = { id: data.id, token: data.token, time: data.time, player: data.player, discordInvite: data.discordInvite };
@@ -222,7 +259,8 @@ function showSubmit(route) {
         return;
       }
       if (tab) tab.close();
-      msg.innerHTML = `<div class="alert alert-ok">✅ Time <b>${esc(data.time)}</b> sent (submission #${data.id}). It will appear on the leaderboard once a moderator approves it.</div>`;
+      msg.innerHTML = `<div class="alert alert-ok">✅ Time <b>${esc(data.time)}</b> sent to the moderators (submission #${data.id}).
+        It will appear on the leaderboard once approved${account ? ': follow it on <a href="/account">your account page</a>' : ''}.</div>`;
       form.time.value = ''; form.proof_url.value = ''; fileInput.value = ''; showFile(); form.comment.value = '';
       msg.scrollIntoView({ behavior: 'smooth', block: 'center' });
     } catch (err) {
@@ -232,11 +270,161 @@ function showSubmit(route) {
   });
 }
 
+// ---------- Account page ----------
+const LOGIN_ERRORS = {
+  cancelled: 'Login cancelled.',
+  state: 'The login link expired, please try again.',
+  discord: 'Discord did not answer, please try again in a moment.',
+  disabled: 'Login with Discord is not configured on this site yet.',
+};
+const STATUS = { pending: '⏳ Pending', approved: '✅ Approved', rejected: '❌ Rejected' };
+
+async function viewAccount(route) {
+  await loadMe();
+  document.title = `My account | ${meta.legal.siteName}`;
+  const errorBox = route.error && LOGIN_ERRORS[route.error] ? `<div class="alert alert-err">${LOGIN_ERRORS[route.error]}</div>` : '';
+  if (route.error) history.replaceState(null, '', '/account');
+
+  if (!me.user) {
+    $app.innerHTML = `
+    <div class="page-head"><div><h1>My account</h1><p>Log in with your Discord account: it is created automatically the first time.</p></div></div>
+    <div class="card card-pad form-card account-card">
+      ${errorBox}
+      <ul class="perks">
+        <li>Submit your times <b>without the <code>/verif</code> step</b></li>
+        <li>Follow the review of your submissions</li>
+        <li>Change your player name or country, or delete your account at any time</li>
+      </ul>
+      ${me.loginEnabled === false
+    ? '<div class="alert alert-err">Login with Discord is not configured on this site yet.</div>'
+    : `<a class="btn btn-discord btn-lg" href="/auth/discord?next=/account">${R.DISCORD_ICON}Log in with Discord</a>`}
+      <p class="muted small">We only receive your Discord ID, username and avatar — never your email or password. See the <a href="/privacy">Privacy Policy</a>.</p>
+    </div>`;
+    return;
+  }
+
+  const head = `
+    <div class="page-head"><div class="profile-head">
+      ${me.user.avatar ? `<img class="discord-avatar" src="${esc(me.user.avatar)}" alt="" width="64" height="64">` : `<div class="avatar" aria-hidden="true">${esc((me.player ? me.player.name : me.user.name)[0].toUpperCase())}</div>`}
+      <div><h1>${esc(me.player ? me.player.name : 'Welcome!')}</h1><p>Logged in with Discord as <b>@${esc(me.user.name)}</b></p></div>
+    </div><button class="btn" id="logout">Log out</button></div>`;
+
+  if (!me.player) {
+    $app.innerHTML = `${head}
+    <form id="setup" class="card card-pad form-card" novalidate>
+      <h2 class="card-title">Choose your player name</h2>
+      <p class="muted">It is shown on the leaderboards. If you already submitted times with <code>/verif</code>, use the same name to get them back.</p>
+      <div id="msg"></div>
+      <div class="row">
+        <div class="field"><label for="name">Player name</label><input id="name" name="name" required maxlength="32" placeholder="Your nickname"></div>
+        <div class="field"><label for="country">Country</label><select id="country" name="country" required>${R.countryOptions('', 'Select your country')}</select></div>
+      </div>
+      <button class="btn btn-primary" type="submit">Create my profile</button>
+    </form>`;
+    bindLogout();
+    $app.querySelector('#setup').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const f = e.target;
+      submitAction(f, '/api/account/setup', { name: f.elements.namedItem('name').value, country: f.elements.namedItem('country').value }, () => navigate('/account', { replace: true }));
+    });
+    return;
+  }
+
+  const p = me.player;
+  const subs = me.submissions || [];
+  $app.innerHTML = `${head}
+    <div class="account-grid">
+      <section class="card card-pad">
+        <h2 class="card-title">Profile</h2>
+        <p>${R.flag(p.country)}${esc(R.countryName(p.country))} · <a class="player-link" href="${url.player(p.id)}">View my public profile ›</a></p>
+        <form id="rename" novalidate>
+          <div id="msg-name"></div>
+          <label for="name">Player name</label>
+          <div class="inline-form"><input id="name" name="name" maxlength="32" value="${esc(p.name)}" ${me.renameAt ? 'disabled' : ''}>
+            <button class="btn" type="submit" ${me.renameAt ? 'disabled' : ''}>Rename</button></div>
+          <div class="hint">${me.renameAt ? `You can change it again on ${esc(me.renameAt.slice(0, 10))}.` : `Your name can be changed once every ${me.renameDays} days. All your times follow.`}</div>
+        </form>
+        <form id="country-form" novalidate>
+          <div id="msg-country"></div>
+          <label for="country">Country</label>
+          <div class="inline-form"><select id="country" name="country">${R.countryOptions(p.country, 'Select your country')}</select>
+            <button class="btn" type="submit">Save</button></div>
+        </form>
+      </section>
+      <section class="card card-pad">
+        <h2 class="card-title">Submit</h2>
+        <p class="muted">You're logged in: your times go straight to the moderators, no <code>/verif</code> needed.</p>
+        <a class="btn btn-primary" href="/submit">Submit a time</a>
+      </section>
+    </div>
+    <h2 class="section-title">My submissions</h2>
+    ${subs.length ? `<div class="card table-wrap"><table>
+      <thead><tr><th>Track</th><th>Class</th><th class="num">Time</th><th>Status</th><th class="hide-sm">Date</th></tr></thead>
+      <tbody>${subs.map((x) => `<tr>
+        <td><a class="player-link" href="${url.track(x.track_id, x.cc)}">${esc(meta.tracks.find((t) => t.id === x.track_id)?.name || x.track_id)}</a></td>
+        <td><span class="pill pill-cc">${x.cc}cc</span></td>
+        <td class="num time">${R.fmt(x.time_ms)}</td>
+        <td><span class="status status-${x.status}">${STATUS[x.status]}</span>${x.reject_reason ? `<div class="hint">${esc(x.reject_reason)}</div>` : ''}</td>
+        <td class="hide-sm muted">${esc((x.reviewed_at || x.created_at).slice(0, 10))}</td></tr>`).join('')}</tbody></table></div>`
+    : '<div class="card empty"><b>No submissions yet</b><a href="/submit">Submit your first time!</a></div>'}
+    <section class="card card-pad danger-zone">
+      <h2 class="card-title">Delete my account</h2>
+      <p>This permanently deletes your profile, <b>all your times</b> (including approved ones and records) and your proof files. This cannot be undone.</p>
+      <form id="delete" novalidate>
+        <div id="msg-delete"></div>
+        <label for="confirm">Type <b>${esc(p.name)}</b> to confirm</label>
+        <div class="inline-form"><input id="confirm" name="confirm" autocomplete="off"><button class="btn btn-danger" type="submit">Delete my account</button></div>
+      </form>
+    </section>`;
+  bindLogout();
+  $app.querySelector('#rename').addEventListener('submit', (e) => {
+    e.preventDefault();
+    submitAction(e.target, '/api/account/name', { name: e.target.elements.namedItem('name').value }, () => viewAccount({ view: 'account' }), '#msg-name');
+  });
+  $app.querySelector('#country-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    submitAction(e.target, '/api/account/country', { country: e.target.elements.namedItem('country').value }, () => viewAccount({ view: 'account' }), '#msg-country');
+  });
+  $app.querySelector('#delete').addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!window.confirm('Delete your account and all your times? This cannot be undone.')) return;
+    submitAction(e.target, '/api/account/delete', { confirm: e.target.elements.namedItem('confirm').value }, async () => {
+      session.del('pendingVerify');
+      try { localStorage.removeItem('player'); } catch { /* ignore */ }
+      await loadMe();
+      $app.innerHTML = '<div class="page-head"><div><h1>Account deleted</h1><p>Your profile and all your times have been deleted.</p></div></div><a class="btn" href="/">Back to the home page</a>';
+    }, '#msg-delete');
+  });
+}
+
+async function submitAction(form, href, body, onSuccess, msgSel = '#msg') {
+  const msg = form.querySelector(msgSel);
+  const buttons = form.querySelectorAll('button');
+  buttons.forEach((b) => { b.disabled = true; });
+  try {
+    await postJson(href, body);
+    await onSuccess();
+  } catch (err) {
+    msg.innerHTML = `<div class="alert alert-err">${esc(err.message)}</div>`;
+    buttons.forEach((b) => { b.disabled = false; });
+  }
+}
+
+function bindLogout() {
+  $app.querySelector('#logout').addEventListener('click', async () => {
+    try { await postJson('/auth/logout'); } catch { /* ignore */ }
+    await loadMe();
+    navigate('/');
+  });
+}
+
 // ---------- Start ----------
 // The server already sent the complete page: only the interactions are attached
 (function start() {
+  loadMe();
   const route = R.parseRoute(location.pathname, location.search);
   delete $app.dataset.ssr;
   if (route.view === 'submit') showSubmit(route);
+  else if (route.view === 'account') viewAccount(route);
   else if (!route.redirect) bind(route);
 }());
