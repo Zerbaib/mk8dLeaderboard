@@ -95,6 +95,19 @@ Cookies: a banner asks visitors to **accept or refuse** cookies on their first v
 Security: the session cookie is `HttpOnly`, `SameSite=Lax` and `Secure` over https; only a hash of the session id is stored;
 the OAuth `state` is checked; account changes are refused when the request comes from another website.
 
+## Admin panel
+
+`/admin` shows the site statistics to the Discord accounts listed in `ADMIN_DISCORD_IDS` (comma-separated user IDs).
+For everyone else the page does not exist (404).
+
+- logged-in players: online now (active in the last 5 minutes), active in 24 h, logins in 24 h, open sessions;
+- accounts: total, new in 24 h / 7 days / 30 days, latest accounts with their last activity;
+- times: submitted in 24 h / 7 days, awaiting review, not verified yet, approved, rejected;
+- charts of times submitted and new accounts per day (30 days), most submitted tracks, latest submissions.
+
+There are no visitor analytics: only logged-in players are counted, from their session.
+To find your Discord user ID: Discord → Settings → Advanced → **Developer Mode**, then right-click your name → **Copy User ID**.
+
 ## Record announcements (webhook)
 
 Every time an approved time **enters the top 10** of a track (and improves the player's best time), a message is posted
@@ -182,6 +195,7 @@ What the code does to match the Privacy Policy:
 | `DISCORD_MOD_ROLE_ID` | Role allowed to review (optional) |
 | `DISCORD_BOT_STATUS` | Bot status text (default `🚀 go on mk8dxtimes.com`) |
 | `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET` | Login with Discord (OAuth2) |
+| `ADMIN_DISCORD_IDS` | Discord user IDs allowed to open `/admin` |
 | `DISCORD_RECORDS_WEBHOOK_URL` | Webhook where new records are announced (optional) |
 | `DISCORD_INVITE_URL` | Public invite shown on the Terms page (optional) |
 | `LEGAL_SITE_URL` | Site address shown in the Terms of Use (defaults to `PUBLIC_URL`) |

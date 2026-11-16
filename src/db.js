@@ -66,6 +66,7 @@ if (addColumn('submissions', 'verified_at', 'TEXT')) {
 }
 addColumn('players', 'discord_id', 'TEXT');
 addColumn('players', 'name_changed_at', 'TEXT');
+addColumn('players', 'account_created_at', 'TEXT');
 db.exec(`
 CREATE UNIQUE INDEX IF NOT EXISTS idx_players_discord ON players (discord_id) WHERE discord_id IS NOT NULL;
 -- Login sessions (Discord accounts). Only a hash of the session id is stored.
@@ -86,6 +87,8 @@ CREATE TABLE IF NOT EXISTS verification_codes (
   expires_at   INTEGER NOT NULL
 );
 `);
+
+addColumn('sessions', 'last_seen', 'INTEGER');
 
 db.transaction(() => {
   db.prepare('DELETE FROM country_regions').run();
@@ -454,6 +457,13 @@ function getSession(id) {
     .get(hashId(id), Date.now()) || null;
 }
 
+// Remembers when a logged-in user was last active (at most once a minute)
+function touchSession(id) {
+  if (!id) return;
+  const now = Date.now();
+  db.prepare('UPDATE sessions SET last_seen = ? WHERE id_hash = ? AND (last_seen IS NULL OR last_seen < ?)').run(now, hashId(id), now - 60000);
+}
+
 function deleteSession(id) {
   if (id) db.prepare('DELETE FROM sessions WHERE id_hash = ?').run(hashId(id));
 }
@@ -489,9 +499,9 @@ const setupTx = db.transaction((discordId, name, country) => {
   if (err) return { error: err };
   const existing = findPlayer.get(name);
   if (existing) {
-    db.prepare('UPDATE players SET discord_id = ?, country = ? WHERE id = ?').run(discordId, country, existing.id);
+    db.prepare("UPDATE players SET discord_id = ?, country = ?, account_created_at = datetime('now') WHERE id = ?").run(discordId, country, existing.id);
   } else {
-    db.prepare('INSERT INTO players (name, country, discord_id) VALUES (?, ?, ?)').run(name, country, discordId);
+    db.prepare("INSERT INTO players (name, country, discord_id, account_created_at) VALUES (?, ?, ?, datetime('now'))").run(name, country, discordId);
   }
   return { player: accountPlayer(discordId) };
 });
@@ -537,11 +547,71 @@ const deleteTx = db.transaction((discordId) => {
 });
 const deleteAccount = (discordId) => deleteTx(discordId);
 
+// ---------- Admin statistics ----------
+function adminStats() {
+  const now = Date.now();
+  const n = (sql, ...args) => db.prepare(sql).get(...args).n;
+  const days = 30;
+  const since = (d) => `-${d} days`;
+  const accountDate = "COALESCE(account_created_at, created_at)";
+
+  // One entry per day for the last 30 days, zeros included
+  const series = (rows) => {
+    const byDay = Object.fromEntries(rows.map((r) => [r.day, r.n]));
+    return Array.from({ length: days }, (_, i) => {
+      const day = new Date(now - (days - 1 - i) * 86400000).toISOString().slice(0, 10);
+      return { day, n: byDay[day] || 0 };
+    });
+  };
+
+  return {
+    generatedAt: new Date(now).toISOString(),
+    users: {
+      online: n('SELECT COUNT(DISTINCT discord_id) AS n FROM sessions WHERE last_seen > ? AND expires_at > ?', now - 5 * 60000, now),
+      active24h: n('SELECT COUNT(DISTINCT discord_id) AS n FROM sessions WHERE last_seen > ?', now - 86400000),
+      logins24h: n('SELECT COUNT(*) AS n FROM sessions WHERE created_at > ?', now - 86400000),
+      sessions: n('SELECT COUNT(DISTINCT discord_id) AS n FROM sessions WHERE expires_at > ?', now),
+    },
+    accounts: {
+      total: n('SELECT COUNT(*) AS n FROM players WHERE discord_id IS NOT NULL'),
+      new24h: n(`SELECT COUNT(*) AS n FROM players WHERE discord_id IS NOT NULL AND ${accountDate} > datetime('now', '-1 day')`),
+      new7d: n(`SELECT COUNT(*) AS n FROM players WHERE discord_id IS NOT NULL AND ${accountDate} > datetime('now', ?)`, since(7)),
+      new30d: n(`SELECT COUNT(*) AS n FROM players WHERE discord_id IS NOT NULL AND ${accountDate} > datetime('now', ?)`, since(30)),
+    },
+    submissions: {
+      total: n('SELECT COUNT(*) AS n FROM submissions'),
+      new24h: n("SELECT COUNT(*) AS n FROM submissions WHERE created_at > datetime('now', '-1 day')"),
+      new7d: n('SELECT COUNT(*) AS n FROM submissions WHERE created_at > datetime(\'now\', ?)', since(7)),
+      pending: n("SELECT COUNT(*) AS n FROM submissions WHERE status = 'pending' AND verified_at IS NOT NULL"),
+      unverified: n("SELECT COUNT(*) AS n FROM submissions WHERE status = 'pending' AND verified_at IS NULL"),
+      approved: n("SELECT COUNT(*) AS n FROM submissions WHERE status = 'approved'"),
+      rejected: n("SELECT COUNT(*) AS n FROM submissions WHERE status = 'rejected'"),
+      approved7d: n("SELECT COUNT(*) AS n FROM submissions WHERE status = 'approved' AND reviewed_at > datetime('now', ?)", since(7)),
+    },
+    leaderboard: stats(),
+    perDay: {
+      submissions: series(db.prepare(`SELECT date(created_at) AS day, COUNT(*) AS n FROM submissions
+        WHERE created_at > datetime('now', ?) GROUP BY day`).all(since(days))),
+      accounts: series(db.prepare(`SELECT date(${accountDate}) AS day, COUNT(*) AS n FROM players
+        WHERE discord_id IS NOT NULL AND ${accountDate} > datetime('now', ?) GROUP BY day`).all(since(days))),
+    },
+    latestAccounts: db.prepare(`SELECT p.id, p.name, p.country, ${accountDate} AS created,
+        (SELECT discord_name FROM sessions s WHERE s.discord_id = p.discord_id ORDER BY created_at DESC LIMIT 1) AS discord_name,
+        (SELECT MAX(last_seen) FROM sessions s WHERE s.discord_id = p.discord_id) AS last_seen
+      FROM players p WHERE p.discord_id IS NOT NULL ORDER BY created DESC LIMIT 10`).all(),
+    latestSubmissions: db.prepare(`SELECT id, player_name, country, track_id, cc, time_ms, status, created_at,
+        verified_at IS NOT NULL AS verified, discord_name
+      FROM submissions ORDER BY id DESC LIMIT 15`).all(),
+    topTracks: db.prepare(`SELECT track_id, cc, COUNT(*) AS n FROM submissions
+      WHERE created_at > datetime('now', ?) GROUP BY track_id, cc ORDER BY n DESC LIMIT 8`).all(since(days)),
+  };
+}
+
 module.exports = {
   db, parseTime, formatTime, TRACK_BY_ID,
   createSubmission, getSubmission, setSubmissionDiscord, unsentSubmissions, rankingChange, TOP, purgeRejected, purgeUnverified, issueCode, verifySubmission, claimError, linkPlayer, setDiscordMessage, approveSubmission, rejectSubmission,
   trackLeaderboard, worldRecords, playerRanking, countryRanking, regionRanking, playerProfile, searchPlayers,
   stats, recentRecords,
-  createSession, getSession, deleteSession, accountPlayer, accountInfo, setupAccount, renameAccount, setAccountCountry, deleteAccount,
+  createSession, getSession, touchSession, deleteSession, adminStats, accountPlayer, accountInfo, setupAccount, renameAccount, setAccountCountry, deleteAccount,
   RENAME_COOLDOWN_DAYS,
 };

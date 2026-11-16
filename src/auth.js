@@ -16,6 +16,10 @@ const UPLOAD_DIR = path.join(__dirname, '..', 'uploads');
 
 const isEnabled = () => Boolean(CLIENT_ID && CLIENT_SECRET);
 
+// Discord user IDs allowed to see /admin (comma-separated in ADMIN_DISCORD_IDS)
+const ADMINS = new Set(String(process.env.ADMIN_DISCORD_IDS || '').split(/[\s,]+/).filter(Boolean));
+const isAdmin = (user) => Boolean(user && ADMINS.has(user.discord_id));
+
 // ---------- Cookies ----------
 function readCookies(req) {
   const out = {};
@@ -35,6 +39,7 @@ function setCookie(res, name, value, maxAge) {
 function sessionMiddleware(req, res, next) {
   req.sessionId = readCookies(req)[COOKIE] || null;
   req.user = store.getSession(req.sessionId);
+  if (req.user) store.touchSession(req.sessionId);
   next();
 }
 
@@ -116,7 +121,15 @@ function mount(app) {
       renameAt: info.renameAt,
       renameDays: store.RENAME_COOLDOWN_DAYS,
       loginEnabled: true,
+      isAdmin: isAdmin(req.user),
     });
+  });
+
+  // Statistics for the admin panel. Anyone else gets a plain 404, as if the page did not exist.
+  app.get('/api/admin/stats', (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    if (!isAdmin(req.user)) return res.status(404).json({ error: 'Not found' });
+    res.json(store.adminStats());
   });
 
   // All account changes: logged in + same origin
@@ -158,4 +171,4 @@ function mount(app) {
   });
 }
 
-module.exports = { mount, isEnabled, sameOrigin };
+module.exports = { mount, isEnabled, sameOrigin, isAdmin };

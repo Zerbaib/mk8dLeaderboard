@@ -84,6 +84,7 @@
       if (n === 1 && p0 === 'submit') return { view: 'submit', track: trackById[q.get('track')] ? q.get('track') : '', fresh: q.has('new') };
       if (n === 1 && ['terms', 'privacy', 'legal', 'points'].includes(p0)) return { view: p0 };
       if (n === 1 && p0 === 'account') return { view: 'account', error: q.get('error') || '' };
+      if (n === 1 && p0 === 'admin') return { view: 'admin' };
       return { view: 'notfound' };
     }
 
@@ -453,7 +454,7 @@
       <li>your proof: a link or an uploaded image/video — note that a proof may contain your in-game name, your voice or your image if you include them;</li>
       <li>an optional comment;</li>
       <li>your <b>Discord user ID and username</b>, when you confirm the submission with <code>/verif</code>;</li>
-      <li>if you <b>log in with Discord</b>: your Discord user ID, username and avatar. We never receive your email address or password, and we do not keep the access token Discord gives us;</li>
+      <li>if you <b>log in with Discord</b>: your Discord user ID, username and avatar. We never receive your email address or password, and we do not keep the access token Discord gives us. While you are logged in, we also record the time of your last activity on the Site (at most once a minute), used only for the Site's internal statistics (e.g. number of players online) and deleted with your session;</li>
       <li>the date of submission, and the review result (approved/rejected, moderator name, optional reason).</li>
     </ul>
     <p><b>Technical data:</b> your IP address is used temporarily, in memory only, to limit the number of submissions (anti-spam). It is never written to our database and is forgotten within 10 minutes. Our hosting provider may keep standard server logs for security purposes.</p>
@@ -539,6 +540,14 @@
       };
     }
 
+    // Private page filled in by the browser for admins only; looks like any other missing page otherwise
+    function admin() {
+      return {
+        title: `Admin${suffix}`, description: 'Admin', crumbs: [], noindex: true,
+        html: '<div class="page-head"><div><h1>Admin</h1><p>Loading…</p></div></div>',
+      };
+    }
+
     function notfound() {
       return {
         title: `Page not found${suffix}`, description: 'This page does not exist.', crumbs: [], noindex: true,
@@ -546,7 +555,7 @@
       };
     }
 
-    const VIEWS = { home, tracks, track, players, player, countries, regions, submit, terms, privacy, legal, points, account, notfound };
+    const VIEWS = { home, tracks, track, players, player, countries, regions, submit, terms, privacy, legal, points, account, admin, notfound };
 
     // Renders a route with its data
     function page(route, data, extra) {

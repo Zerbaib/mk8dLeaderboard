@@ -46,6 +46,14 @@ function loadMe() {
 function updateAccountLink() {
   const a = document.getElementById('accountLink');
   if (!a) return;
+  let adminLink = document.getElementById('adminLink');
+  if (me.isAdmin && !adminLink) {
+    adminLink = document.createElement('a');
+    adminLink.id = 'adminLink'; adminLink.href = '/admin'; adminLink.dataset.nav = 'admin'; adminLink.textContent = 'Admin';
+    document.getElementById('nav').appendChild(adminLink);
+  } else if (!me.isAdmin && adminLink) {
+    adminLink.remove();
+  }
   if (me.user) {
     const label = me.player ? me.player.name : me.user.name;
     a.innerHTML = `${me.user.avatar ? `<img src="${esc(me.user.avatar)}" alt="" width="28" height="28">` : ''}<span>${esc(label)}</span>`;
@@ -123,6 +131,8 @@ async function render({ scroll = true } = {}) {
     await showSubmit(route);
   } else if (route.view === 'account') {
     await viewAccount(route);
+  } else if (route.view === 'admin') {
+    await viewAdmin();
   } else {
     $app.classList.add('loading');
     let data = {};
@@ -508,6 +518,161 @@ function showCookieBanner({ reason, next } = {}) {
 
 document.getElementById('cookieSettings')?.addEventListener('click', () => showCookieBanner());
 
+// ---------- Admin panel ----------
+const nf = (n) => Number(n || 0).toLocaleString('en-US');
+const shortDay = (d) => new Date(`${d}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+const ago = (ms) => {
+  if (!ms) return '—';
+  const m = Math.round((Date.now() - ms) / 60000);
+  if (m < 1) return 'now';
+  if (m < 60) return `${m} min ago`;
+  if (m < 1440) return `${Math.round(m / 60)} h ago`;
+  return `${Math.round(m / 1440)} d ago`;
+};
+
+// Single-series bar chart (one value per day): thin bars, recessive grid, hover tooltip, table view
+// unit: [singular, plural]
+const plural = (n, unit) => (n === 1 ? unit[0] : unit[1]);
+function barChart(id, title, rows, unit) {
+  const W = 720; const H = 220; const pad = { l: 34, r: 8, t: 12, b: 26 };
+  const max = Math.max(1, ...rows.map((r) => r.n));
+  const step = Math.max(1, Math.ceil(max / 4));
+  const top = step * Math.ceil(max / step);
+  const iw = W - pad.l - pad.r; const ih = H - pad.t - pad.b;
+  const slot = iw / rows.length; const bw = Math.max(2, slot - 2); // 2px gap between bars
+  const y = (v) => pad.t + ih - (v / top) * ih;
+  const ticks = []; for (let v = 0; v <= top; v += step) ticks.push(v);
+  const total = rows.reduce((a, r) => a + r.n, 0);
+  const bars = rows.map((r, i) => {
+    const x = pad.l + i * slot + 1; const h = (r.n / top) * ih;
+    const radius = Math.min(4, bw / 2, h);
+    const path = h > 0
+      ? `M${x},${pad.t + ih} v${-(h - radius)} q0,${-radius} ${radius},${-radius} h${bw - 2 * radius} q${radius},0 ${radius},${radius} v${h - radius} z`
+      : '';
+    return `${path ? `<path d="${path}" class="bar"/>` : ''}<rect class="hit" x="${pad.l + i * slot}" y="${pad.t}" width="${slot}" height="${ih}" data-i="${i}"/>`;
+  }).join('');
+  const labels = rows.map((r, i) => (i % 5 === 4 || i === rows.length - 1)
+    ? `<text x="${pad.l + i * slot + slot / 2}" y="${H - 8}" text-anchor="middle">${shortDay(r.day)}</text>` : '').join('');
+  return `<figure class="chart card card-pad" id="${id}">
+    <figcaption><b>${title}</b><span class="muted small">${nf(total)} in 30 days</span></figcaption>
+    <div class="chart-wrap">
+      <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(title)}: ${nf(total)} in the last 30 days">
+        ${ticks.map((v) => `<line class="grid" x1="${pad.l}" x2="${W - pad.r}" y1="${y(v)}" y2="${y(v)}"/><text class="tick" x="${pad.l - 6}" y="${y(v) + 4}" text-anchor="end">${v}</text>`).join('')}
+        ${bars}<g class="xlabels">${labels}</g>
+      </svg>
+      <div class="chart-tip" hidden></div>
+    </div>
+    <details class="chart-table"><summary>View as table</summary><div class="table-wrap"><table>
+      <thead><tr><th>Day</th><th class="num">${esc(unit[1])}</th></tr></thead>
+      <tbody>${rows.slice().reverse().map((r) => `<tr><td>${shortDay(r.day)}</td><td class="num">${r.n}</td></tr>`).join('')}</tbody></table></div></details>
+  </figure>`;
+}
+
+function bindChart(id, rows, unit) {
+  const fig = document.getElementById(id);
+  const tip = fig.querySelector('.chart-tip');
+  const wrap = fig.querySelector('.chart-wrap');
+  fig.querySelectorAll('.hit').forEach((hit) => {
+    const show = () => {
+      const r = rows[Number(hit.dataset.i)];
+      fig.querySelectorAll('.hit.on').forEach((h) => h.classList.remove('on'));
+      hit.classList.add('on');
+      tip.innerHTML = `<b>${r.n}</b> ${esc(plural(r.n, unit))}<span>${shortDay(r.day)}</span>`;
+      tip.hidden = false;
+      const box = hit.getBoundingClientRect(); const w = wrap.getBoundingClientRect();
+      const left = Math.min(Math.max(box.left - w.left + box.width / 2, 50), w.width - 50);
+      tip.style.left = `${left}px`;
+    };
+    hit.addEventListener('mouseenter', show);
+    hit.addEventListener('click', show);
+  });
+  wrap.addEventListener('mouseleave', () => { tip.hidden = true; fig.querySelectorAll('.hit.on').forEach((h) => h.classList.remove('on')); });
+}
+
+async function viewAdmin() {
+  document.title = `Admin | ${meta.legal.siteName}`;
+  const res = await fetch('/api/admin/stats', { credentials: 'same-origin' });
+  if (!res.ok) {
+    const p = R.page({ view: 'notfound' }, {});
+    $app.innerHTML = p.html; updateHead(p);
+    return;
+  }
+  const st = await res.json();
+  const tile = (value, label, note) => `<div class="card stat"><b>${nf(value)}</b><span>${label}</span>${note ? `<em>${note}</em>` : ''}</div>`;
+  const trackName = (id) => meta.tracks.find((t) => t.id === id)?.name || id;
+  const STATUS_LABEL = { pending: '⏳ Pending', approved: '✅ Approved', rejected: '❌ Rejected' };
+  $app.innerHTML = `
+    <div class="page-head"><div><h1>Admin</h1><p>Updated ${new Date(st.generatedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} · only visible to you</p></div>
+      <button class="btn" id="refresh" type="button">Refresh</button></div>
+
+    <h2 class="section-title">Logged-in players</h2>
+    <div class="stats stats-4">
+      ${tile(st.users.online, 'online now', 'active in the last 5 min')}
+      ${tile(st.users.active24h, 'active in 24 h')}
+      ${tile(st.users.logins24h, 'logins in 24 h')}
+      ${tile(st.users.sessions, 'with an open session')}
+    </div>
+
+    <h2 class="section-title">Accounts</h2>
+    <div class="stats stats-4">
+      ${tile(st.accounts.total, 'accounts')}
+      ${tile(st.accounts.new24h, 'new in 24 h')}
+      ${tile(st.accounts.new7d, 'new in 7 days')}
+      ${tile(st.accounts.new30d, 'new in 30 days')}
+    </div>
+
+    <h2 class="section-title">Times</h2>
+    <div class="stats stats-4">
+      ${tile(st.submissions.new24h, 'submitted in 24 h', `${nf(st.submissions.new7d)} in 7 days`)}
+      ${tile(st.submissions.pending, 'awaiting review', st.submissions.unverified ? `+ ${nf(st.submissions.unverified)} not verified yet` : '')}
+      ${tile(st.submissions.approved, 'approved', `${nf(st.submissions.approved7d)} in 7 days`)}
+      ${tile(st.submissions.rejected, 'rejected')}
+    </div>
+    <p class="muted small">Leaderboard: ${nf(st.leaderboard.players)} ranked players from ${nf(st.leaderboard.countries)} countries · ${nf(st.submissions.total)} submissions in total.</p>
+
+    <div class="charts">
+      ${barChart('chart-subs', 'Times submitted per day', st.perDay.submissions, ['time', 'times'])}
+      ${barChart('chart-accounts', 'New accounts per day', st.perDay.accounts, ['account', 'accounts'])}
+    </div>
+
+    <div class="account-grid admin-grid">
+      <section>
+        <h2 class="section-title">Latest accounts</h2>
+        ${st.latestAccounts.length ? `<div class="card table-wrap"><table>
+          <thead><tr><th>Player</th><th class="hide-sm">Discord</th><th>Created</th><th class="hide-sm">Last seen</th></tr></thead>
+          <tbody>${st.latestAccounts.map((a) => `<tr>
+            <td>${R.flag(a.country)}<a class="player-link" href="${url.player(a.id)}">${esc(a.name)}</a></td>
+            <td class="hide-sm muted">${a.discord_name ? `@${esc(a.discord_name)}` : '—'}</td>
+            <td class="muted">${esc((a.created || '').slice(0, 10))}</td>
+            <td class="hide-sm muted">${ago(a.last_seen)}</td></tr>`).join('')}</tbody></table></div>`
+    : '<div class="card empty"><b>No accounts yet</b></div>'}
+      </section>
+      <section>
+        <h2 class="section-title">Most submitted tracks <span class="muted small">(30 days)</span></h2>
+        ${st.topTracks.length ? `<div class="card table-wrap"><table>
+          <thead><tr><th>Track</th><th>Class</th><th class="num">Times</th></tr></thead>
+          <tbody>${st.topTracks.map((t) => `<tr><td><a class="player-link" href="${url.track(t.track_id, t.cc)}">${esc(trackName(t.track_id))}</a></td>
+            <td><span class="pill pill-cc">${t.cc}cc</span></td><td class="num">${t.n}</td></tr>`).join('')}</tbody></table></div>`
+    : '<div class="card empty"><b>No submissions in 30 days</b></div>'}
+      </section>
+    </div>
+
+    <h2 class="section-title">Latest submissions</h2>
+    ${st.latestSubmissions.length ? `<div class="card table-wrap"><table>
+      <thead><tr><th>#</th><th>Player</th><th>Track</th><th class="num">Time</th><th>Status</th><th class="hide-sm">Sent</th></tr></thead>
+      <tbody>${st.latestSubmissions.map((x) => `<tr>
+        <td class="muted">${x.id}</td>
+        <td>${R.flag(x.country)}${esc(x.player_name)}${x.discord_name ? ` <span class="muted small">@${esc(x.discord_name)}</span>` : ''}</td>
+        <td><a class="player-link" href="${url.track(x.track_id, x.cc)}">${esc(trackName(x.track_id))}</a> <span class="pill pill-cc">${x.cc}cc</span></td>
+        <td class="num time">${R.fmt(x.time_ms)}</td>
+        <td><span class="status status-${x.status}">${x.status === 'pending' && !x.verified ? '🔒 Not verified' : STATUS_LABEL[x.status]}</span></td>
+        <td class="hide-sm muted">${esc(x.created_at.slice(0, 16))}</td></tr>`).join('')}</tbody></table></div>`
+    : '<div class="card empty"><b>No submissions yet</b></div>'}`;
+  bindChart('chart-subs', st.perDay.submissions, ['time', 'times']);
+  bindChart('chart-accounts', st.perDay.accounts, ['account', 'accounts']);
+  $app.querySelector('#refresh').addEventListener('click', () => viewAdmin());
+}
+
 // ---------- Start ----------
 // The server already sent the complete page: only the interactions are attached
 (function start() {
@@ -517,5 +682,6 @@ document.getElementById('cookieSettings')?.addEventListener('click', () => showC
   delete $app.dataset.ssr;
   if (route.view === 'submit') showSubmit(route);
   else if (route.view === 'account') viewAccount(route);
+  else if (route.view === 'admin') viewAdmin();
   else if (!route.redirect) bind(route);
 }());

@@ -90,7 +90,8 @@ app.get('/sitemap.xml', (req, res) => res.type('application/xml').send(pages.sit
 // Data of a page, used by the browser when navigating without reloading
 app.get('/api/page', (req, res) => {
   const target = new URL(String(req.query.path || '/'), 'http://x');
-  const r = pages.resolve(target.pathname, target.search);
+  let r = pages.resolve(target.pathname, target.search);
+  if (r.route?.view === 'admin' && !auth.isAdmin(req.user)) r = pages.resolve('/404', '');
   if (r.redirect) return res.json({ redirect: r.redirect });
   res.status(r.status).json({ route: r.route, data: r.data });
 });
@@ -233,7 +234,9 @@ app.get('/index.html', (req, res) => res.redirect(301, '/'));
 app.use((req, res, next) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') return next();
   if (/^\/(api|uploads|flags|fonts)\//.test(req.path)) return next();
-  const r = pages.resolve(req.path, req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '');
+  let r = pages.resolve(req.path, req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '');
+  // The admin page does not exist for anyone but the admins
+  if (r.route?.view === 'admin' && !auth.isAdmin(req.user)) r = pages.resolve('/404', '');
   if (r.redirect) return res.redirect(301, r.redirect);
   res.status(r.status).set('Cache-Control', 'no-cache').type('html').send(pages.html(r));
 });
