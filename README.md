@@ -88,6 +88,10 @@ Setup:
    `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET`.
 2. In the same page, **Redirects** → add `https://your-domain/auth/discord/callback` (it must match `PUBLIC_URL` exactly).
 
+Cookies: a banner asks visitors to **accept or refuse** cookies on their first visit (asked again after 6 months,
+"Cookie settings" link in the footer). Refusing keeps browsing and `/verif` submissions working, but blocks login
+(it needs the session cookie), logs out a logged-in player and stops remembering the player name in the form.
+
 Security: the session cookie is `HttpOnly`, `SameSite=Lax` and `Secure` over https; only a hash of the session id is stored;
 the OAuth `state` is checked; account changes are refused when the request comes from another website.
 

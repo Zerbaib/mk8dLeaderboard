@@ -262,7 +262,23 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .account-notice .flag { margin-left: 4px; }
 @media (max-width: 860px) {
   .account-grid { grid-template-columns: 1fr; }
-  .account-link { order: 2; margin-left: auto; padding: 6px 10px; }
+  .account-link { order: 1; margin-left: auto; padding: 6px 10px; }
+  .btn-submit { order: 2; }
   .account-link span { max-width: 90px; }
   .btn-submit { margin-left: 0; }
 }
+
+/* ---------- Cookie banner ---------- */
+.cookie-banner { position: fixed; left: 20px; bottom: 20px; z-index: 50; width: min(440px, calc(100vw - 32px)); padding: 20px 22px;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 20px 60px rgba(0, 0, 0, .55); }
+.cookie-banner h2 { margin: 0 0 8px; font: 400 18px 'Russo One', sans-serif; }
+.cookie-banner p { margin: 0 0 10px; font-size: 14px; color: #cdd4e2; }
+.cookie-banner .small a { color: var(--blue); }
+.cookie-alert { padding: 8px 12px; border-radius: 8px; background: rgba(255, 201, 40, .12); color: var(--yellow) !important; font-weight: 600; }
+.cookie-actions { display: flex; gap: 10px; margin-top: 14px; }
+.cookie-actions .btn { flex: 1; }
+.link-button { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--text); cursor: pointer; }
+.link-button:hover { color: var(--yellow); }
+@media (max-width: 860px) { .cookie-banner { left: 16px; right: 16px; bottom: 16px; width: auto; } }
+.btn-choice { background: var(--card-2); box-shadow: inset 0 0 0 1px var(--line); }
+.btn-choice:hover { background: var(--yellow); color: #1b1400; filter: none; }

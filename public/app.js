@@ -6,8 +6,29 @@ const R = window.MK8Render(meta);
 const { esc, url } = R;
 const { DISCORD_ICON } = R;
 
+// ---------- Cookie consent ----------
+// The choice itself is stored in the browser (that storage is allowed without consent) and asked again after 6 months.
+const CONSENT_KEY = 'cookieConsent';
+const CONSENT_DAYS = 180;
+const OPTIONAL_KEYS = ['player', 'discordJoined']; // remembered only if cookies are accepted
+const consent = {
+  get() {
+    try {
+      const c = JSON.parse(localStorage.getItem(CONSENT_KEY) || 'null');
+      if (!c || Date.now() - c.at > CONSENT_DAYS * 86400000) return null;
+      return c.value;
+    } catch { return null; }
+  },
+  set(value) {
+    try { localStorage.setItem(CONSENT_KEY, JSON.stringify({ value, at: Date.now() })); } catch { /* ignore */ }
+  },
+};
+
 function localGet(k, d) { try { return localStorage.getItem(k) || d; } catch { return d; } }
-function localSet(k, v) { try { localStorage.setItem(k, v); } catch { /* ignore */ } }
+function localSet(k, v) {
+  if (OPTIONAL_KEYS.includes(k) && consent.get() !== 'accepted') return;
+  try { localStorage.setItem(k, v); } catch { /* ignore */ }
+}
 const session = {
   get(k) { try { return JSON.parse(sessionStorage.getItem(k) || 'null'); } catch { return null; } },
   set(k, v) { try { sessionStorage.setItem(k, JSON.stringify(v)); } catch { /* ignore */ } },
@@ -74,6 +95,13 @@ function navigate(href, { replace = false } = {}) {
 }
 
 document.addEventListener('click', (e) => {
+  // Logging in sets a cookie: only once cookies are accepted
+  const login = e.target.closest('a[href^="/auth/discord"]');
+  if (login && consent.get() !== 'accepted') {
+    e.preventDefault();
+    showCookieBanner({ reason: 'login', next: login.getAttribute('href') });
+    return;
+  }
   const a = e.target.closest('a[href]');
   if (!a || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   if (a.target || a.hasAttribute('download')) return;
@@ -196,7 +224,7 @@ async function showSubmit(route) {
   if (me.user && !me.player) { navigate('/account', { replace: true }); return; }
   const pending = session.get('pendingVerify');
   if (pending && !route.fresh && !account) { viewVerify(pending); return; }
-  const saved = (() => { try { return JSON.parse(localStorage.getItem('player') || '{}'); } catch { return {}; } })();
+  const saved = (() => { try { return JSON.parse(localGet('player', '{}')); } catch { return {}; } })();
   const p = R.page(route, {}, { saved, account });
   $app.innerHTML = p.html;
   updateHead(p);
@@ -418,10 +446,54 @@ function bindLogout() {
   });
 }
 
+// ---------- Cookie banner ----------
+function showCookieBanner({ reason, next } = {}) {
+  document.getElementById('cookie-banner')?.remove();
+  const current = consent.get();
+  const box = document.createElement('div');
+  box.id = 'cookie-banner';
+  box.className = 'cookie-banner';
+  box.setAttribute('role', 'dialog');
+  box.setAttribute('aria-labelledby', 'cookie-title');
+  box.innerHTML = `
+    <h2 id="cookie-title">🍪 Cookies</h2>
+    ${reason === 'login' ? '<p class="cookie-alert">Logging in with Discord needs a login cookie. Accept cookies to continue.</p>' : ''}
+    <p>We only use cookies to <b>keep you logged in with Discord</b>, and your browser's storage to <b>remember your player name and country</b> in the form.
+      No tracking, no advertising, no statistics.</p>
+    <p class="muted small">If you refuse, you can still browse and submit times with <code>/verif</code>, but you can't log in.
+      ${current ? `Current choice: <b>${current === 'accepted' ? 'accepted' : 'refused'}</b>. ` : ''}<a href="/privacy#cookies">Learn more</a></p>
+    <div class="cookie-actions">
+      <button class="btn btn-choice" type="button" data-choice="refused">Refuse</button>
+      <button class="btn btn-choice" type="button" data-choice="accepted">Accept</button>
+    </div>`;
+  document.body.appendChild(box);
+  box.querySelector(reason === 'login' ? '[data-choice="accepted"]' : '[data-choice]').focus();
+  box.querySelectorAll('[data-choice]').forEach((btn) => btn.addEventListener('click', async () => {
+    const value = btn.dataset.choice;
+    consent.set(value);
+    box.remove();
+    if (value === 'accepted') {
+      if (next) location.href = next;
+      return;
+    }
+    // Refused: forget what was remembered and log out
+    OPTIONAL_KEYS.forEach((k) => { try { localStorage.removeItem(k); } catch { /* ignore */ } });
+    if (me.user) {
+      try { await postJson('/auth/logout'); } catch { /* ignore */ }
+      await loadMe();
+      const route = R.parseRoute(location.pathname, location.search);
+      if (route.view === 'account' || route.view === 'submit') render({ scroll: false });
+    }
+  }));
+}
+
+document.getElementById('cookieSettings')?.addEventListener('click', () => showCookieBanner());
+
 // ---------- Start ----------
 // The server already sent the complete page: only the interactions are attached
 (function start() {
   loadMe();
+  if (!consent.get()) showCookieBanner();
   const route = R.parseRoute(location.pathname, location.search);
   delete $app.dataset.ssr;
   if (route.view === 'submit') showSubmit(route);
