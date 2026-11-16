@@ -471,7 +471,7 @@ function accountInfo(discordId) {
   const player = accountPlayer(discordId);
   const submissions = db.prepare(`SELECT id, track_id, cc, time_ms, status, reject_reason, created_at, reviewed_at
     FROM submissions WHERE discord_id = ? OR (player_id IS NOT NULL AND player_id = ?)
-    ORDER BY id DESC LIMIT 50`).all(discordId, player ? player.id : -1);
+    ORDER BY id DESC LIMIT 2000`).all(discordId, player ? player.id : -1);
   let renameAt = null;
   if (player && player.name_changed_at) {
     const next = new Date(`${player.name_changed_at.replace(' ', 'T')}Z`).getTime() + RENAME_COOLDOWN_DAYS * 86400000;

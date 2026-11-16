@@ -359,7 +359,22 @@ async function viewAccount(route) {
   }
 
   const p = me.player;
+  // Pending and rejected first (they need attention), then the latest approved times
   const subs = me.submissions || [];
+  const toCheck = subs.filter((x) => x.status !== 'approved');
+  const approved = subs.filter((x) => x.status === 'approved');
+  const APPROVED_SHOWN = 10;
+  const subRow = (x, hidden) => `<tr${hidden ? ' class="more-row" hidden' : ''}>
+        <td><a class="player-link" href="${url.track(x.track_id, x.cc)}">${esc(meta.tracks.find((t) => t.id === x.track_id)?.name || x.track_id)}</a></td>
+        <td><span class="pill pill-cc">${x.cc}cc</span></td>
+        <td class="num time">${R.fmt(x.time_ms)}</td>
+        <td><span class="status status-${x.status}">${STATUS[x.status]}</span>${x.reject_reason ? `<div class="hint">${esc(x.reject_reason)}</div>` : ''}</td>
+        <td class="hide-sm muted">${esc((x.reviewed_at || x.created_at).slice(0, 10))}</td></tr>`;
+  const counts = [
+    toCheck.filter((x) => x.status === 'pending').length && `${toCheck.filter((x) => x.status === 'pending').length} pending`,
+    toCheck.filter((x) => x.status === 'rejected').length && `${toCheck.filter((x) => x.status === 'rejected').length} rejected`,
+    approved.length && `${approved.length} approved`,
+  ].filter(Boolean).join(' · ');
   $app.innerHTML = `${head}
     <div class="account-grid">
       <section class="card card-pad">
@@ -385,15 +400,11 @@ async function viewAccount(route) {
         <a class="btn btn-primary" href="/submit">Submit a time</a>
       </section>
     </div>
-    <h2 class="section-title">My submissions</h2>
+    <div class="section-row"><h2 class="section-title">My submissions</h2>${counts ? `<span class="muted small">${counts}</span>` : ''}</div>
     ${subs.length ? `<div class="card table-wrap"><table>
       <thead><tr><th>Track</th><th>Class</th><th class="num">Time</th><th>Status</th><th class="hide-sm">Date</th></tr></thead>
-      <tbody>${subs.map((x) => `<tr>
-        <td><a class="player-link" href="${url.track(x.track_id, x.cc)}">${esc(meta.tracks.find((t) => t.id === x.track_id)?.name || x.track_id)}</a></td>
-        <td><span class="pill pill-cc">${x.cc}cc</span></td>
-        <td class="num time">${R.fmt(x.time_ms)}</td>
-        <td><span class="status status-${x.status}">${STATUS[x.status]}</span>${x.reject_reason ? `<div class="hint">${esc(x.reject_reason)}</div>` : ''}</td>
-        <td class="hide-sm muted">${esc((x.reviewed_at || x.created_at).slice(0, 10))}</td></tr>`).join('')}</tbody></table></div>`
+      <tbody>${[...toCheck, ...approved].map((x, i) => subRow(x, x.status === 'approved' && i - toCheck.length >= APPROVED_SHOWN)).join('')}</tbody></table>
+      ${approved.length > APPROVED_SHOWN ? `<button class="btn show-all" id="showAll" type="button" aria-expanded="false">Show all ${approved.length} approved times</button>` : ''}</div>`
     : '<div class="card empty"><b>No submissions yet</b><a href="/submit">Submit your first time!</a></div>'}
     <section class="card card-pad danger-zone">
       <h2 class="card-title">Delete my account</h2>
@@ -405,6 +416,14 @@ async function viewAccount(route) {
       </form>
     </section>`;
   bindLogout();
+  $app.querySelector('#showAll')?.addEventListener('click', (e) => {
+    const btn = e.currentTarget;
+    const open = btn.getAttribute('aria-expanded') !== 'true';
+    $app.querySelectorAll('.more-row').forEach((row) => { row.hidden = !open; });
+    btn.setAttribute('aria-expanded', String(open));
+    btn.textContent = open ? 'Show less' : `Show all ${approved.length} approved times`;
+    if (!open) btn.closest('.card').scrollIntoView({ block: 'start', behavior: 'smooth' });
+  });
   $app.querySelector('#rename').addEventListener('submit', (e) => {
     e.preventDefault();
     submitAction(e.target, '/api/account/name', { name: e.target.elements.namedItem('name').value }, () => viewAccount({ view: 'account' }), '#msg-name');
