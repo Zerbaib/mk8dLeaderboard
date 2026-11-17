@@ -89,6 +89,8 @@ CREATE TABLE IF NOT EXISTS verification_codes (
 `);
 
 addColumn('sessions', 'last_seen', 'INTEGER');
+// Small key/value store (e.g. date of the last Discord role sync)
+db.exec('CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT)');
 
 db.transaction(() => {
   db.prepare('DELETE FROM country_regions').run();
@@ -547,6 +549,30 @@ const deleteTx = db.transaction((discordId) => {
 });
 const deleteAccount = (discordId) => deleteTx(discordId);
 
+// ---------- Discord roles ----------
+const kvGet = (key) => db.prepare('SELECT value FROM kv WHERE key = ?').get(key)?.value ?? null;
+const kvSet = (key, value) => db.prepare('INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, String(value));
+
+// Discord accounts that should have each role, computed from the approved times
+function roleHolders() {
+  const ids = (sql) => new Set(db.prepare(sql).all().map((r) => r.discord_id));
+  const verified = ids('SELECT discord_id FROM players WHERE discord_id IS NOT NULL');
+  // Current record (rank 1, ties included) / top 10 on at least one track and class
+  const wr = ids(`${BEST_CTE} SELECT DISTINCT p.discord_id FROM scored JOIN players p ON p.id = scored.player_id
+    WHERE world_rank = 1 AND p.discord_id IS NOT NULL`);
+  const top10 = ids(`${BEST_CTE} SELECT DISTINCT p.discord_id FROM scored JOIN players p ON p.id = scored.player_id
+    WHERE world_rank <= ${TOP} AND p.discord_id IS NOT NULL`);
+  // Held a record at some point: the time was the best (or tied) when it was approved
+  const everWr = ids(`SELECT DISTINCT p.discord_id FROM (
+      SELECT player_id, time_ms, MIN(time_ms) OVER (PARTITION BY track_id, cc ORDER BY reviewed_at, id
+        ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS prev_best
+      FROM submissions WHERE status = 'approved'
+    ) h JOIN players p ON p.id = h.player_id
+    WHERE p.discord_id IS NOT NULL AND (h.prev_best IS NULL OR h.time_ms <= h.prev_best)`);
+  const formerWr = new Set([...everWr].filter((id) => !wr.has(id)));
+  return { verified, wr, formerWr, top10 };
+}
+
 // ---------- Admin statistics ----------
 function adminStats() {
   const now = Date.now();
@@ -612,6 +638,6 @@ module.exports = {
   createSubmission, getSubmission, setSubmissionDiscord, unsentSubmissions, rankingChange, TOP, purgeRejected, purgeUnverified, issueCode, verifySubmission, claimError, linkPlayer, setDiscordMessage, approveSubmission, rejectSubmission,
   trackLeaderboard, worldRecords, playerRanking, countryRanking, regionRanking, playerProfile, searchPlayers,
   stats, recentRecords,
-  createSession, getSession, touchSession, deleteSession, adminStats, accountPlayer, accountInfo, setupAccount, renameAccount, setAccountCountry, deleteAccount,
+  createSession, getSession, touchSession, deleteSession, adminStats, roleHolders, kvGet, kvSet, accountPlayer, accountInfo, setupAccount, renameAccount, setAccountCountry, deleteAccount,
   RENAME_COOLDOWN_DAYS,
 };

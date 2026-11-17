@@ -95,6 +95,30 @@ Cookies: a banner asks visitors to **accept or refuse** cookies on their first v
 Security: the session cookie is `HttpOnly`, `SameSite=Lax` and `Secure` over https; only a hash of the session id is stored;
 the OAuth `state` is checked; account changes are refused when the request comes from another website.
 
+## Automatic Discord roles
+
+The bot can manage four roles (each one optional):
+
+| Role | Who gets it |
+|---|---|
+| `DISCORD_VERIFIED_ROLE_ID` | every member whose Discord account is linked to a player (`/verif`, login on the site, or `/link`) |
+| `DISCORD_WR_ROLE_ID` | current record holder (rank 1, ties included) on at least one track, 150cc or 200cc |
+| `DISCORD_FORMER_WR_ROLE_ID` | held a record at some point (according to the approved times on the site) but holds none now |
+| `DISCORD_TOP10_ROLE_ID` | in the top 10 of at least one track, 150cc or 200cc |
+
+- The verified role is given **right away** when an account is linked, and removed when the account is deleted.
+- When someone **joins the server** and already has an account with times, they get all their roles immediately.
+- The leaderboard roles are **recomputed every `ROLE_SYNC_HOURS` hours** (48 by default): a player who drops from 9th to 11th
+  loses the Top 10 role at the next sync. Moderators can run the sync at any time with **`/sync-roles`**.
+- Members without a linked account lose these roles at the next sync; bots are never touched.
+
+Setup:
+
+1. Developer Portal → your application → **Bot** → **Privileged Gateway Intents** → enable **Server Members Intent**.
+   (Without it the bot still starts, but without automatic roles, and says so in the console.)
+2. Give the bot the **Manage Roles** permission, and in Server settings → **Roles**, drag the bot's role **above** the 4 roles.
+3. Copy each role ID (Developer Mode → right-click the role → Copy Role ID) into `.env`.
+
 ## Admin panel
 
 `/admin` shows the site statistics to the Discord accounts listed in `ADMIN_DISCORD_IDS` (comma-separated user IDs).
@@ -196,6 +220,8 @@ What the code does to match the Privacy Policy:
 | `DISCORD_BOT_STATUS` | Bot status text (default `🚀 go on mk8dxtimes.com`) |
 | `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET` | Login with Discord (OAuth2) |
 | `ADMIN_DISCORD_IDS` | Discord user IDs allowed to open `/admin` |
+| `DISCORD_VERIFIED_ROLE_ID`, `DISCORD_WR_ROLE_ID`, `DISCORD_FORMER_WR_ROLE_ID`, `DISCORD_TOP10_ROLE_ID` | Roles given automatically (optional) |
+| `ROLE_SYNC_HOURS` | Hours between two role syncs (default 48) |
 | `DISCORD_RECORDS_WEBHOOK_URL` | Webhook where new records are announced (optional) |
 | `DISCORD_INVITE_URL` | Public invite shown on the Terms page (optional) |
 | `LEGAL_SITE_URL` | Site address shown in the Terms of Use (defaults to `PUBLIC_URL`) |

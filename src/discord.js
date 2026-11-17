@@ -16,6 +16,17 @@ const MOD_ROLE_ID = process.env.DISCORD_MOD_ROLE_ID; // optional
 const BOT_STATUS = process.env.DISCORD_BOT_STATUS || '🚀 go on mk8dxtimes.com';
 const PUBLIC_URL = (process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, '');
 const UPLOAD_DIR = path.join(__dirname, '..', 'uploads');
+// Roles given automatically (optional): verified account, current record holder, former record holder, top 10
+const ROLE_IDS = {
+  verified: process.env.DISCORD_VERIFIED_ROLE_ID,
+  wr: process.env.DISCORD_WR_ROLE_ID,
+  formerWr: process.env.DISCORD_FORMER_WR_ROLE_ID,
+  top10: process.env.DISCORD_TOP10_ROLE_ID,
+};
+const ROLE_LABELS = { verified: 'Verified', wr: 'WR holder', formerWr: 'Former WR', top10: 'Top 10' };
+const ROLE_SYNC_HOURS = Number(process.env.ROLE_SYNC_HOURS || 48);
+const rolesEnabled = () => Object.values(ROLE_IDS).some(Boolean);
+let membersIntent = false;
 const MAX_ATTACH = 8 * 1024 * 1024; // above this size we send a link instead of the file
 
 const COLORS = { pending: 0xf5b301, approved: 0x2ecc71, rejected: 0xe74c3c };
@@ -233,6 +244,9 @@ async function handleInteraction(interaction) {
 const COMMANDS = [
   new SlashCommandBuilder().setName('verif')
     .setDescription('Get a 6-digit code by DM to verify your time submission on the website'),
+  new SlashCommandBuilder().setName('sync-roles')
+    .setDescription('Moderators: update the leaderboard roles (WR, former WR, top 10, verified) now')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles),
   new SlashCommandBuilder().setName('link')
     .setDescription('Moderators: link a player name to a Discord account')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
@@ -270,7 +284,94 @@ async function handleCommand(interaction) {
     const target = interaction.options.getUser('user', true);
     const result = store.linkPlayer(name, target.id);
     await ephemeral(result.error ? `⚠️ ${result.error}` : `🔗 "${result.player}" is now linked to <@${target.id}>.`);
+    if (!result.error) syncMember(target.id);
+    return;
   }
+
+  if (interaction.commandName === 'sync-roles') {
+    if (!canModerate(interaction)) {
+      await ephemeral('⛔ Only moderators can use this command.');
+      return;
+    }
+    if (!rolesEnabled()) { await ephemeral('No role is configured (DISCORD_*_ROLE_ID in .env).'); return; }
+    if (!membersIntent) { await ephemeral('⚠️ The "Server Members Intent" is not enabled for the bot: roles cannot be synced.'); return; }
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const r = await syncRoles();
+    await interaction.editReply(`🔄 Roles updated: ${r.summary}`);
+  }
+}
+
+// ---------- Automatic roles ----------
+async function getGuild() {
+  const channel = await client.channels.fetch(CHANNEL_ID);
+  return channel.guild;
+}
+
+// Adds / removes the configured roles of one member; returns the number of changes
+async function applyRoles(member, holders, counts) {
+  if (member.user.bot) return;
+  for (const [key, roleId] of Object.entries(ROLE_IDS)) {
+    if (!roleId) continue;
+    const want = holders[key].has(member.id);
+    const has = member.roles.cache.has(roleId);
+    if (want === has) continue;
+    try {
+      if (want) await member.roles.add(roleId, 'MK8DX Times leaderboard');
+      else await member.roles.remove(roleId, 'MK8DX Times leaderboard');
+      if (counts) counts[key][want ? 'added' : 'removed'] += 1;
+    } catch (e) {
+      console.error(`[roles] Could not ${want ? 'give' : 'remove'} ${ROLE_LABELS[key]} for ${member.user.tag}: ${e.message}`);
+      if (counts) counts.errors += 1;
+    }
+  }
+}
+
+let syncing = null;
+// Full sync: every member of the server gets exactly the roles the leaderboard says
+function syncRoles() {
+  if (syncing) return syncing;
+  syncing = (async () => {
+    const guild = await getGuild();
+    const missing = Object.entries(ROLE_IDS).filter(([, id]) => id && !guild.roles.cache.has(id)).map(([k]) => ROLE_LABELS[k]);
+    if (missing.length) console.warn(`[roles] Role(s) not found on the server: ${missing.join(', ')} — check the IDs in .env`);
+    const members = await guild.members.fetch();
+    const holders = store.roleHolders();
+    const counts = { errors: 0 };
+    Object.keys(ROLE_IDS).forEach((k) => { counts[k] = { added: 0, removed: 0 }; });
+    for (const member of members.values()) await applyRoles(member, holders, counts);
+    store.kvSet('roles_synced_at', Date.now());
+    const summary = Object.entries(ROLE_IDS).filter(([, id]) => id)
+      .map(([k]) => `${ROLE_LABELS[k]} +${counts[k].added}/−${counts[k].removed}`).join(', ')
+      + (counts.errors ? ` (${counts.errors} error(s): check that the bot's role is above these roles and has "Manage Roles")` : '');
+    console.log(`[roles] Sync done on ${members.size} members: ${summary}`);
+    return { counts, summary };
+  })().finally(() => { syncing = null; });
+  return syncing;
+}
+
+// One member only (new member, account linked or deleted): called without waiting
+async function syncMember(discordId) {
+  if (!ready || !rolesEnabled() || !discordId) return;
+  try {
+    const guild = await getGuild();
+    const member = await guild.members.fetch(discordId).catch(() => null);
+    if (member) await applyRoles(member, store.roleHolders());
+  } catch (e) {
+    console.error('[roles] Member sync failed:', e.message);
+  }
+}
+
+// Runs the full sync when the last one is older than ROLE_SYNC_HOURS (checked every hour)
+function scheduleRoleSync() {
+  if (!rolesEnabled() || !membersIntent) return;
+  const check = () => {
+    const last = Number(store.kvGet('roles_synced_at') || 0);
+    if (Date.now() - last >= ROLE_SYNC_HOURS * 3600000) {
+      syncRoles().catch((e) => console.error('[roles] Sync failed:', e.message));
+    }
+  };
+  setTimeout(check, 30 * 1000).unref();
+  setInterval(check, 60 * 60 * 1000).unref();
 }
 
 // Sends the verified submissions that arrived while the bot was offline
@@ -288,13 +389,15 @@ async function registerCommands() {
   console.log(`[discord] Slash commands registered on "${channel.guild.name}".`);
 }
 
-async function start() {
+async function start(withMembers = rolesEnabled()) {
   if (!TOKEN || !CHANNEL_ID) {
     console.warn('[discord] DISCORD_TOKEN or DISCORD_CHANNEL_ID missing: bot disabled.');
     return;
   }
+  membersIntent = withMembers;
+  // The members intent (privileged) is only needed for the automatic roles
   client = new Client({
-    intents: [GatewayIntentBits.Guilds],
+    intents: withMembers ? [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] : [GatewayIntentBits.Guilds],
     // Set at login and re-sent automatically on every reconnection
     presence: { status: 'online', activities: [{ type: ActivityType.Custom, name: 'Custom Status', state: BOT_STATUS }] },
   });
@@ -303,7 +406,10 @@ async function start() {
     console.log(`[discord] Logged in as ${c.user.tag}`);
     registerCommands().catch((e) => console.error('[discord] Could not register slash commands:', e.message));
     sendBacklog().catch((e) => console.error('[discord] Could not send waiting submissions:', e.message));
+    scheduleRoleSync();
   });
+  // Someone joins the server: if they already have an account on the site, they get their roles right away
+  client.on(Events.GuildMemberAdd, (member) => { syncMember(member.id); });
   client.on(Events.InteractionCreate, (interaction) => {
     handleInteraction(interaction).catch((err) => {
       console.error('[discord] Interaction error:', err);
@@ -312,9 +418,19 @@ async function start() {
       }
     });
   });
-  await client.login(TOKEN);
+  try {
+    await client.login(TOKEN);
+  } catch (e) {
+    if (withMembers && /disallowed intents/i.test(e.message)) {
+      console.error('[roles] The bot is not allowed to see the server members. Enable "Server Members Intent" in the Developer Portal '
+        + '(your application > Bot > Privileged Gateway Intents). The bot starts without automatic roles.');
+      client.destroy();
+      return start(false);
+    }
+    throw e;
+  }
 }
 
 const isEnabled = () => Boolean(TOKEN && CHANNEL_ID);
 
-module.exports = { start, isEnabled, notifySubmission, notifyPending, buildEmbed, buildButtons, handleInteraction, COMMANDS };
+module.exports = { start, isEnabled, notifySubmission, notifyPending, syncMember, syncRoles, buildEmbed, buildButtons, handleInteraction, COMMANDS };

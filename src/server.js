@@ -170,6 +170,7 @@ app.post('/api/submissions/:id/verify', async (req, res) => {
   if (!result.already) {
     await sendToModerators(result.sub);
     discord.notifyPending(result.sub);
+    discord.syncMember(result.sub.discord_id); // verified role
   }
   res.json({ ok: true, discordName: result.sub.discord_name });
 });

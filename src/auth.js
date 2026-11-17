@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const store = require('./db');
+const discord = require('./discord');
 const { COUNTRY_BY_CODE } = require('./countries');
 
 const CLIENT_ID = process.env.DISCORD_CLIENT_ID;
@@ -144,7 +145,9 @@ function mount(app) {
   app.post('/api/account/setup', guard, (req, res) => {
     const country = clean(req.body?.country, 2).toUpperCase();
     if (!COUNTRY_BY_CODE[country]) return res.status(400).json({ error: 'Please select your country.' });
-    reply(res, store.setupAccount(req.user.discord_id, clean(req.body?.name, 32), country));
+    const r = store.setupAccount(req.user.discord_id, clean(req.body?.name, 32), country);
+    if (!r.error) discord.syncMember(req.user.discord_id); // verified role (+ leaderboard roles of a reclaimed name)
+    reply(res, r);
   });
 
   app.post('/api/account/name', guard, (req, res) => {
@@ -164,6 +167,7 @@ function mount(app) {
       return res.status(400).json({ error: `Type "${expected}" to confirm.` });
     }
     const { deleted, files } = store.deleteAccount(req.user.discord_id);
+    discord.syncMember(req.user.discord_id); // removes the roles
     files.forEach((f) => fs.unlink(path.join(UPLOAD_DIR, path.basename(f)), () => {}));
     setCookie(res, COOKIE, '', 0);
     console.log(`[auth] Account deleted (${deleted} submission(s)).`);
