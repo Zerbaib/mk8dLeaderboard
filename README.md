@@ -103,7 +103,7 @@ The bot can manage four roles (each one optional):
 |---|---|
 | `DISCORD_VERIFIED_ROLE_ID` | every member whose Discord account is linked to a player (`/verif`, login on the site, or `/link`) |
 | `DISCORD_WR_ROLE_ID` | current record holder (rank 1, ties included) on at least one track, 150cc or 200cc |
-| `DISCORD_FORMER_WR_ROLE_ID` | was 1st on a track **while at least one other player had a time on it** (being alone does not count), but holds no record now |
+| `DISCORD_FORMER_WR_ROLE_ID` | held a record but holds none now. Imported world records (mkwrs.com) always count; a time submitted on the site only counts if another player had a time on the track meanwhile (being alone is not a record) |
 | `DISCORD_TOP10_ROLE_ID` | in the top 10 of at least one track, 150cc or 200cc |
 
 - The verified role is given **right away** when an account is linked, and removed when the account is deleted.

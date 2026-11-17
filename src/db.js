@@ -562,23 +562,25 @@ function roleHolders() {
     WHERE world_rank = 1 AND p.discord_id IS NOT NULL`);
   const top10 = ids(`${BEST_CTE} SELECT DISTINCT p.discord_id FROM scored JOIN players p ON p.id = scored.player_id
     WHERE world_rank <= ${TOP} AND p.discord_id IS NOT NULL`);
-  // Held a record at some point AGAINST other players: being alone on a track does not count
+  // Held a record at some point. An imported world record (mkwrs.com) always counts; a time submitted on the site
+  // only counts if another player had a time on the track meanwhile (being alone on a track is not a record).
   const everWr = new Set();
-  const rows = db.prepare(`SELECT s.track_id, s.cc, s.player_id, s.time_ms, p.discord_id FROM submissions s
+  const rows = db.prepare(`SELECT s.track_id, s.cc, s.player_id, s.time_ms, p.discord_id,
+      s.reviewed_by = 'mkwrs.com import' AS imported FROM submissions s
     JOIN players p ON p.id = s.player_id WHERE s.status = 'approved' ORDER BY s.track_id, s.cc, s.reviewed_at, s.id`).all();
   let key = null; let best = Infinity; let holders = new Map(); let players = new Set();
-  // A reign counts if, while it lasted, at least one other player had a time on the track
-  const closeReign = () => holders.forEach((discordId, playerId) => {
-    if (discordId && [...players].some((p) => p !== playerId)) everWr.add(discordId);
+  // holders: playerId -> { discordId, imported }
+  const closeReign = () => holders.forEach((h, playerId) => {
+    if (h.discordId && (h.imported || [...players].some((p) => p !== playerId))) everWr.add(h.discordId);
   });
   for (const r of rows) {
     const k = `${r.track_id}:${r.cc}`;
     if (k !== key) { closeReign(); key = k; best = Infinity; holders = new Map(); players = new Set(); }
     if (r.time_ms < best) {
       closeReign(); // the time that ends the reign is not counted as competition for it
-      best = r.time_ms; holders = new Map([[r.player_id, r.discord_id]]);
+      best = r.time_ms; holders = new Map([[r.player_id, { discordId: r.discord_id, imported: Boolean(r.imported) }]]);
     } else if (r.time_ms === best) {
-      holders.set(r.player_id, r.discord_id);
+      holders.set(r.player_id, { discordId: r.discord_id, imported: Boolean(r.imported) || holders.get(r.player_id)?.imported });
     }
     players.add(r.player_id);
   }
