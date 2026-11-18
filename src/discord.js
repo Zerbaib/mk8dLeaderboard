@@ -241,12 +241,27 @@ async function handleInteraction(interaction) {
 }
 
 // ---------- Slash commands ----------
+const ROLE_CHOICES = Object.entries(ROLE_LABELS).map(([value, name]) => ({ name, value }));
+// Admin commands: members with "Manage Roles" (or the admins of the site)
+const canManageRoles = (interaction) => interaction.memberPermissions?.has(PermissionFlagsBits.ManageRoles)
+  || String(process.env.ADMIN_DISCORD_IDS || '').split(/[\s,]+/).includes(interaction.user.id);
+
 const COMMANDS = [
   new SlashCommandBuilder().setName('verif')
     .setDescription('Get a 6-digit code by DM to verify your time submission on the website'),
   new SlashCommandBuilder().setName('sync-roles')
     .setDescription('Moderators: update the leaderboard roles (WR, former WR, top 10, verified) now')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles),
+  new SlashCommandBuilder().setName('manual-role')
+    .setDescription('Admins: give a leaderboard role by hand (kept by the automatic sync)')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+    .addSubcommand((c) => c.setName('add').setDescription('Give a role by hand (never removed by the sync)')
+      .addUserOption((o) => o.setName('user').setDescription('Member').setRequired(true))
+      .addStringOption((o) => o.setName('role').setDescription('Role').setRequired(true).addChoices(...ROLE_CHOICES)))
+    .addSubcommand((c) => c.setName('remove').setDescription('Remove a role given by hand (the sync decides again)')
+      .addUserOption((o) => o.setName('user').setDescription('Member').setRequired(true))
+      .addStringOption((o) => o.setName('role').setDescription('Role').setRequired(true).addChoices(...ROLE_CHOICES)))
+    .addSubcommand((c) => c.setName('list').setDescription('List the roles given by hand')),
   new SlashCommandBuilder().setName('link')
     .setDescription('Moderators: link a player name to a Discord account')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
@@ -285,6 +300,38 @@ async function handleCommand(interaction) {
     const result = store.linkPlayer(name, target.id);
     await ephemeral(result.error ? `⚠️ ${result.error}` : `🔗 "${result.player}" is now linked to <@${target.id}>.`);
     if (!result.error) syncMember(target.id);
+    return;
+  }
+
+  if (interaction.commandName === 'manual-role') {
+    if (!canManageRoles(interaction)) {
+      await ephemeral('⛔ Only admins (Manage Roles permission) can use this command.');
+      return;
+    }
+    const sub = interaction.options.getSubcommand();
+    if (sub === 'list') {
+      const rows = store.listManualRoles();
+      await ephemeral(rows.length
+        ? `✋ Roles given by hand:\n${rows.map((r) => `• **${ROLE_LABELS[r.role_key]}** — <@${r.discord_id}> (by ${r.added_by || '?'}, ${r.added_at.slice(0, 10)})`).join('\n')}`
+        : 'No role given by hand.');
+      return;
+    }
+    const target = interaction.options.getUser('user', true);
+    const key = interaction.options.getString('role', true);
+    if (!ROLE_IDS[key]) { await ephemeral(`⚠️ The ${ROLE_LABELS[key]} role is not configured in .env.`); return; }
+    if (sub === 'add') {
+      const added = store.addManualRole(target.id, key, interaction.user.username);
+      await syncMember(target.id);
+      await ephemeral(added
+        ? `✅ <@${target.id}> now has **${ROLE_LABELS[key]}**, given by hand: the automatic sync will never remove it.`
+        : `<@${target.id}> already had **${ROLE_LABELS[key]}** given by hand.`);
+    } else {
+      const removed = store.removeManualRole(target.id, key);
+      await syncMember(target.id);
+      await ephemeral(removed
+        ? `🗑️ Manual **${ROLE_LABELS[key]}** removed for <@${target.id}>: they keep it only if the leaderboard gives it to them.`
+        : `<@${target.id}> had no **${ROLE_LABELS[key]}** given by hand.`);
+    }
     return;
   }
 

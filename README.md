@@ -111,6 +111,9 @@ The bot can manage four roles (each one optional):
 - The leaderboard roles are **recomputed every `ROLE_SYNC_HOURS` hours** (48 by default): a player who drops from 9th to 11th
   loses the Top 10 role at the next sync. Moderators can run the sync at any time with **`/sync-roles`**.
 - Members without a linked account lose these roles at the next sync; bots are never touched.
+- **Roles given by hand** with **`/manual-role add user:@member role:<role>`** are never removed by the sync — useful for a
+  former world record holder whose record is not in the site's history. `/manual-role remove` gives the decision back to
+  the sync, `/manual-role list` shows them. Needs the "Manage Roles" permission (or being in `ADMIN_DISCORD_IDS`).
 
 Setup:
 

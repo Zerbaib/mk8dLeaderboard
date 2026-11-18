@@ -91,6 +91,14 @@ CREATE TABLE IF NOT EXISTS verification_codes (
 addColumn('sessions', 'last_seen', 'INTEGER');
 // Small key/value store (e.g. date of the last Discord role sync)
 db.exec('CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT)');
+// Roles given by hand by an admin (/manual-role): never removed by the automatic sync
+db.exec(`CREATE TABLE IF NOT EXISTS manual_roles (
+  discord_id TEXT NOT NULL,
+  role_key   TEXT NOT NULL,
+  added_by   TEXT,
+  added_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (discord_id, role_key)
+)`);
 
 db.transaction(() => {
   db.prepare('DELETE FROM country_regions').run();
@@ -586,7 +594,24 @@ function roleHolders() {
   }
   closeReign();
   const formerWr = new Set([...everWr].filter((id) => !wr.has(id)));
-  return { verified, wr, formerWr, top10 };
+  const result = { verified, wr, formerWr, top10 };
+  // Roles added by hand are always kept
+  db.prepare('SELECT discord_id, role_key FROM manual_roles').all()
+    .forEach((m) => result[m.role_key]?.add(m.discord_id));
+  return result;
+}
+
+const MANUAL_ROLE_KEYS = ['verified', 'wr', 'formerWr', 'top10'];
+function addManualRole(discordId, roleKey, addedBy) {
+  if (!MANUAL_ROLE_KEYS.includes(roleKey)) throw new Error('Unknown role');
+  return db.prepare(`INSERT INTO manual_roles (discord_id, role_key, added_by) VALUES (?, ?, ?)
+    ON CONFLICT(discord_id, role_key) DO NOTHING`).run(discordId, roleKey, addedBy).changes > 0;
+}
+function removeManualRole(discordId, roleKey) {
+  return db.prepare('DELETE FROM manual_roles WHERE discord_id = ? AND role_key = ?').run(discordId, roleKey).changes > 0;
+}
+function listManualRoles() {
+  return db.prepare('SELECT discord_id, role_key, added_by, added_at FROM manual_roles ORDER BY role_key, added_at').all();
 }
 
 // ---------- Admin statistics ----------
@@ -654,6 +679,6 @@ module.exports = {
   createSubmission, getSubmission, setSubmissionDiscord, unsentSubmissions, rankingChange, TOP, purgeRejected, purgeUnverified, issueCode, verifySubmission, claimError, linkPlayer, setDiscordMessage, approveSubmission, rejectSubmission,
   trackLeaderboard, worldRecords, playerRanking, countryRanking, regionRanking, playerProfile, searchPlayers,
   stats, recentRecords,
-  createSession, getSession, touchSession, deleteSession, adminStats, roleHolders, kvGet, kvSet, accountPlayer, accountInfo, setupAccount, renameAccount, setAccountCountry, deleteAccount,
+  createSession, getSession, touchSession, deleteSession, adminStats, roleHolders, kvGet, kvSet, addManualRole, removeManualRole, listManualRoles, accountPlayer, accountInfo, setupAccount, renameAccount, setAccountCountry, deleteAccount,
   RENAME_COOLDOWN_DAYS,
 };
