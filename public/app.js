@@ -227,6 +227,56 @@ function viewVerify(p) {
   });
 }
 
+// ---------- Time field ----------
+// "145123" -> "1:45.123", "1 45 123" -> "1:45.123"; anything else is left as typed
+function normalizeTime(value) {
+  const v = String(value || '').trim();
+  const digits = v.replace(/\D/g, '');
+  if (/^\d{5,6}$/.test(digits) && !/[:.,]/.test(v)) return `${digits.slice(0, -5)}:${digits.slice(-5, -3)}.${digits.slice(-3)}`;
+  return v;
+}
+
+// On phones and tablets the system keyboard is replaced by our own keypad (digits, ":" and "."):
+// some keyboards (e.g. the iPhone decimal pad) have no ":" nor "."
+function bindTimeKeypad(input) {
+  if (!input || !window.matchMedia('(pointer: coarse)').matches) return;
+  input.setAttribute('inputmode', 'none');
+  input.setAttribute('autocomplete', 'off');
+  const pad = document.createElement('div');
+  pad.className = 'time-pad';
+  pad.hidden = true;
+  pad.setAttribute('role', 'group');
+  pad.setAttribute('aria-label', 'Time keypad');
+  const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', ':', '0', '.'];
+  pad.innerHTML = `${keys.map((k) => `<button type="button" data-key="${k}" class="${/\d/.test(k) ? '' : 'sym'}">${k}</button>`).join('')}
+    <button type="button" data-key="back" class="back" aria-label="Delete">⌫</button>
+    <button type="button" data-key="ok" class="ok">OK</button>`;
+  input.closest('.field').insertBefore(pad, input.nextSibling);
+
+  const insert = (text) => {
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? input.value.length;
+    input.setRangeText(text, start, end, 'end');
+  };
+  const back = () => {
+    let start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? input.value.length;
+    if (start === end && start > 0) start -= 1;
+    input.setRangeText('', start, end, 'end');
+  };
+  // Keep the focus (and the caret) in the field while tapping the keys
+  pad.addEventListener('pointerdown', (e) => e.preventDefault());
+  pad.addEventListener('click', (e) => {
+    const key = e.target.closest('[data-key]')?.dataset.key;
+    if (!key) return;
+    if (key === 'ok') { input.value = normalizeTime(input.value); input.blur(); return; }
+    if (key === 'back') back(); else if (input.value.length < 9) insert(key);
+    if (navigator.vibrate) navigator.vibrate(8);
+  });
+  input.addEventListener('focus', () => { pad.hidden = false; });
+  input.addEventListener('blur', () => { pad.hidden = true; input.value = normalizeTime(input.value); });
+}
+
 // ---------- Track picker (submission form) ----------
 function bindTrackPicker(root) {
   const input = root.querySelector('input[name="track_id"]');
@@ -315,6 +365,7 @@ async function showSubmit(route) {
   }
 
   bindTrackPicker(form.querySelector('#trackPicker'));
+  bindTimeKeypad(form.querySelector('#time'));
 
   form.querySelectorAll('#ccSeg button').forEach((b) => b.addEventListener('click', () => {
     form.querySelectorAll('#ccSeg button').forEach((x) => x.classList.toggle('on', x === b));
@@ -342,7 +393,9 @@ async function showSubmit(route) {
     const error = (t) => { msg.innerHTML = `<div class="alert alert-err">${esc(t)}</div>`; msg.scrollIntoView({ behavior: 'smooth', block: 'center' }); };
     if (!account && !fd.get('country')) return error('Please select your country.');
     if (!fd.get('track_id')) return error('Please select a track.');
-    if (!/^\d{1,2}:[0-5]\d[.,]\d{3}$/.test(fd.get('time').trim())) return error('Invalid time. Expected format: 1:45.123');
+    const time = normalizeTime(fd.get('time'));
+    form.time.value = time; fd.set('time', time);
+    if (!/^\d{1,2}:[0-5]\d[.,]\d{3}$/.test(time)) return error('Invalid time. Expected format: 1:45.123');
     if (!form.accept_terms.checked) return error('You must accept the Terms of Use and the Privacy Policy.');
     btn.disabled = true; btn.textContent = 'Sending…';
     // Open the Discord invite in a new tab. The tab must be opened during the click (popup blockers),
