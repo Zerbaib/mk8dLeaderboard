@@ -8,6 +8,7 @@ const store = require('./db');
 const discord = require('./discord');
 const webhook = require('./webhook');
 const createPages = require('./pages');
+const trackImages = require('./trackImages');
 const auth = require('./auth');
 const { TRACKS, TRACK_BY_ID, CUPS } = require('./tracks');
 const { COUNTRIES, COUNTRY_BY_CODE, REGIONS, REGION_BY_ID } = require('./countries');
@@ -79,7 +80,15 @@ const ccOf = (v) => (Number(v) === 200 ? 200 : 150);
 const clean = (v, max = 100) => String(v || '').trim().replace(/\s+/g, ' ').slice(0, max);
 
 // ---------- Metadata ----------
-const META = { tracks: TRACKS, cups: CUPS, countries: COUNTRIES, regions: REGIONS, legal: LEGAL };
+const META = { tracks: TRACKS.map((t) => ({ ...t })), cups: CUPS, countries: COUNTRIES, regions: REGIONS, legal: LEGAL };
+// Track images (public/tracks): scanned at start and every 2 minutes, so new images appear without a restart
+const scanTrackImages = () => {
+  const n = trackImages.scan(META.tracks);
+  if (n !== LEGAL.trackImages) console.log(`[tracks] ${n}/${META.tracks.length} track image(s) found in public/tracks`);
+  LEGAL.trackImages = n;
+};
+scanTrackImages();
+setInterval(scanTrackImages, 2 * 60 * 1000).unref();
 const pages = createPages(META);
 app.get('/api/meta', (req, res) => res.json(META));
 

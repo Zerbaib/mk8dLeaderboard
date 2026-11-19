@@ -50,6 +50,13 @@
     const playerLink = (id, name, cc) => `<a class="player-link" href="${url.player(id, cc)}">${esc(name)}</a>`;
     const proofHref = (r) => r.proof_url || (r.proof_file ? `/uploads/${r.proof_file}` : null);
     const proofCell = (r) => { const h = proofHref(r); return h ? `<a class="proof" href="${esc(h)}" target="_blank" rel="noopener noreferrer nofollow">View ▸</a>` : ''; };
+    // Track image, or a placeholder in the cup's colours when public/tracks has no image for it
+    const cupColor = (t) => CUP_COLORS[t.cupIndex] || '#e5352b';
+    const initials = (name) => name.replace(/^(Wii|GBA|DS|3DS|N64|GCN|SNES|Tour)\s+/, '').split(/[\s-]+/).filter(Boolean)
+      .slice(0, 3).map((w) => w[0]).join('').toUpperCase();
+    const trackImage = (t, cls = 'track-img') => (t.image
+      ? `<span class="${cls}"><img src="${esc(t.image)}" alt="" loading="lazy" decoding="async"></span>`
+      : `<span class="${cls} track-ph" style="--c:${cupColor(t)}" aria-hidden="true"><b>${esc(initials(t.name))}</b></span>`);
     const recordsPill = (n) => (n ? `<span class="pill pill-wr">🏆 ${n}</span>` : '0');
     const empty = (title, text) => `<div class="card empty"><b>${title}</b>${text}</div>`;
 
@@ -175,8 +182,11 @@
         <div class="tracks">${list.map((t) => {
           const r = wr[t.id];
           return `<a class="track" href="${url.track(t.id, cc)}" style="--c:${CUP_COLORS[i]}" data-name="${esc(t.name.toLowerCase())}">
-            <span class="track-name">${esc(t.name)}</span>
-            <span class="track-wr">${r ? `<span>${flag(r.country)}${esc(r.name)}</span><span class="time">${fmt(r.time_ms)}</span>` : '<span>No time yet</span>'}</span>
+            ${trackImage(t)}
+            <span class="track-body">
+              <span class="track-name">${esc(t.name)}</span>
+              <span class="track-wr">${r ? `<span>${flag(r.country)}${esc(r.name)}</span><span class="time">${fmt(r.time_ms)}</span>` : '<span>No time yet</span>'}</span>
+            </span>
           </a>`;
         }).join('')}</div>
       </section>`).join('')}</div>`,
@@ -334,6 +344,26 @@
     }
 
     // The form is rendered on the server too; the browser fills in the saved player name and handles it
+    // Track picker with thumbnails (the browser makes it interactive, see app.js)
+    function trackPicker(selected) {
+      const sel = trackById[selected];
+      const current = (t) => (t ? `${trackImage(t, 'tp-thumb')}<span>${esc(t.name)}</span>` : '<span class="muted">Select a track</span>');
+      return `<div class="track-picker" id="trackPicker">
+        <input type="hidden" name="track_id" value="${sel ? sel.id : ''}">
+        <button type="button" class="tp-button" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="trackLabel tpCurrent">
+          <span class="tp-current" id="tpCurrent">${current(sel)}</span><span class="tp-caret" aria-hidden="true">▾</span></button>
+        <div class="tp-panel" hidden>
+          <input class="tp-search" type="search" placeholder="Search a track…" aria-label="Search a track" autocomplete="off">
+          <ul class="tp-list" role="listbox" aria-labelledby="trackLabel">${meta.cups.map((cup, i) => `
+            <li class="tp-cup" role="presentation">${esc(cup)}</li>${meta.tracks.filter((t) => t.cupIndex === i).map((t) => `
+            <li class="tp-option" role="option" id="tp-${t.id}" data-id="${t.id}" data-name="${esc(t.name.toLowerCase())}" aria-selected="${t.id === selected}" tabindex="-1">
+              ${trackImage(t, 'tp-thumb')}<span>${esc(t.name)}</span></li>`).join('')}`).join('')}
+            <li class="tp-empty" role="presentation" hidden>No track found</li>
+          </ul>
+        </div>
+      </div>`;
+    }
+
     // extra: { saved: last values typed in this browser, account: logged-in player }
     function submit(route, data, extra = {}) {
       const saved = extra.saved || {};
@@ -360,11 +390,7 @@
       <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
       ${identity}
       <div class="row">
-        <div class="field"><label for="track_id">Track</label><select id="track_id" name="track_id" required>
-          <option value="">Select a track</option>
-          ${meta.cups.map((cup, i) => `<optgroup label="${esc(cup)}">${meta.tracks.filter((t) => t.cupIndex === i)
-            .map((t) => `<option value="${t.id}" ${t.id === route.track ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</optgroup>`).join('')}
-        </select></div>
+        <div class="field"><label id="trackLabel">Track</label>${trackPicker(route.track)}</div>
         <div class="field"><label>Engine class</label>
           <div class="seg" id="ccSeg">${[150, 200].map((c) => `<button type="button" data-v="${c}" class="${cc === c ? 'on' : ''}">${c}cc</button>`).join('')}</div>
           <input type="hidden" name="cc" value="${cc}"></div>
@@ -431,7 +457,9 @@
     </ul>
     <p>Any breach may lead to the removal of your times and a ban from submitting.</p>
     <h2>8. Intellectual property</h2>
-    <p>Mario Kart, Nintendo Switch and the names of tracks and cups are trademarks of Nintendo. The Site is a fan project, is not affiliated with, endorsed or sponsored by Nintendo, and does not use any game assets. All other elements of the Site (design, code, texts) belong to the Publisher, unless stated otherwise.</p>
+    <p>Mario Kart, Nintendo Switch and the names of tracks and cups are trademarks of Nintendo. The Site is a fan project, is not affiliated with, endorsed or sponsored by Nintendo${L.trackImages
+    ? '. Track preview images are screenshots of Mario Kart 8 Deluxe, © Nintendo, shown only to help identify the tracks; they will be removed on request of the rights holder'
+    : ', and does not use any game assets'}. All other elements of the Site (design, code, texts) belong to the Publisher, unless stated otherwise.</p>
     <h2>9. Liability</h2>
     <p>The Site and the leaderboards are provided "as is", for entertainment purposes only. The Publisher does not guarantee that the rankings are complete or error-free and cannot be held liable for any indirect damage resulting from the use of the Site. External links (videos, social networks) are under the sole responsibility of their publishers.</p>
     <h2>10. Personal data</h2>
@@ -507,7 +535,7 @@
     <h2>Hosting</h2>
     <p><b>${v(L.hostName)}</b><br>${v(L.hostAddress)}</p>
     <h2>Nature of the site</h2>
-    <p>${esc(L.siteName)} is a free, non-commercial, fan-made community leaderboard. It is not affiliated with, endorsed or sponsored by Nintendo. Mario Kart and Nintendo Switch are trademarks of Nintendo. Track and cup names are used only to identify the leaderboards.</p>
+    <p>${esc(L.siteName)} is a free, non-commercial, fan-made community leaderboard. It is not affiliated with, endorsed or sponsored by Nintendo. Mario Kart and Nintendo Switch are trademarks of Nintendo. Track and cup names${L.trackImages ? ', and the track preview screenshots (© Nintendo),' : ''} are used only to identify the leaderboards.</p>
     <h2>User content</h2>
     <p>Times and proofs are submitted by players and reviewed by volunteer moderators before publication. To report content that you believe is unlawful or infringes your rights, contact ${mail(L.contactEmail)} with the link to the page concerned and the reason for your request; it will be handled promptly.</p>
     <h2>Credits</h2>

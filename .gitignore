@@ -4,3 +4,7 @@ data/*.db*
 uploads/*
 !uploads/.gitkeep
 !data/.gitkeep
+
+# Track images (Nintendo screenshots): kept on the server, not in git
+public/tracks/*
+!public/tracks/README.md

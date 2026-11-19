@@ -54,6 +54,16 @@ set it to your real address (e.g. `https://mk8dxtimes.com`).
 
 Then add the site to [Google Search Console](https://search.google.com/search-console) and submit `https://your-domain/sitemap.xml`.
 
+## Track images
+
+Track cards (`/tracks`) show an image on top, and the track picker of the submission form shows a thumbnail next to each track.
+Put one image per track in `public/tracks/`, named with the track id (e.g. `wii-rainbow-road.jpg`): the full list of names is in
+`public/tracks/README.md`. Formats: `.webp`, `.avif`, `.jpg`, `.jpeg`, `.png`, ideally 16:9 (e.g. 640×360).
+
+- New images are picked up within 2 minutes, without restarting. A missing image shows a placeholder in the cup colours.
+- The images are **ignored by git** (they are not published with the code): copy them to the server directly.
+- Track screenshots belong to Nintendo. When images are present, the Terms of Use and the Legal Notice say so automatically.
+
 ## Importing the current world records
 
 `npm run import-wrs` downloads the current 150cc and 200cc world records from [mkwrs.com](https://mkwrs.com/mk8dx/)

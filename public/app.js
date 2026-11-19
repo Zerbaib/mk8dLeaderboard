@@ -227,6 +227,71 @@ function viewVerify(p) {
   });
 }
 
+// ---------- Track picker (submission form) ----------
+function bindTrackPicker(root) {
+  const input = root.querySelector('input[name="track_id"]');
+  const button = root.querySelector('.tp-button');
+  const panel = root.querySelector('.tp-panel');
+  const search = root.querySelector('.tp-search');
+  const options = [...root.querySelectorAll('.tp-option')];
+  const cups = [...root.querySelectorAll('.tp-cup')];
+  const emptyRow = root.querySelector('.tp-empty');
+  let active = -1;
+  const visible = () => options.filter((o) => !o.hidden);
+
+  const setActive = (i) => {
+    const list = visible();
+    if (!list.length) { active = -1; return; }
+    active = (i + list.length) % list.length;
+    options.forEach((o) => o.classList.remove('active'));
+    list[active].classList.add('active');
+    list[active].scrollIntoView({ block: 'nearest' });
+    search.setAttribute('aria-activedescendant', list[active].id);
+  };
+  const filter = () => {
+    const q = search.value.trim().toLowerCase();
+    options.forEach((o) => { o.hidden = Boolean(q) && !o.dataset.name.includes(q); });
+    // Hide cup titles with no visible track
+    cups.forEach((c) => {
+      let el = c.nextElementSibling; let any = false;
+      while (el && el.classList.contains('tp-option')) { if (!el.hidden) any = true; el = el.nextElementSibling; }
+      c.hidden = !any;
+    });
+    emptyRow.hidden = visible().length > 0;
+    setActive(0);
+  };
+  const open = () => {
+    panel.hidden = false;
+    button.setAttribute('aria-expanded', 'true');
+    search.value = ''; filter();
+    const sel = options.findIndex((o) => o.dataset.id === input.value);
+    if (sel >= 0) setActive(visible().indexOf(options[sel]));
+    search.focus();
+  };
+  const close = (focusButton = true) => {
+    panel.hidden = true;
+    button.setAttribute('aria-expanded', 'false');
+    if (focusButton) button.focus();
+  };
+  const choose = (o) => {
+    input.value = o.dataset.id;
+    options.forEach((x) => x.setAttribute('aria-selected', String(x === o)));
+    root.querySelector('.tp-current').innerHTML = o.innerHTML;
+    close();
+  };
+
+  button.addEventListener('click', () => (panel.hidden ? open() : close()));
+  search.addEventListener('input', filter);
+  search.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive(active + 1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(active - 1); }
+    else if (e.key === 'Enter') { e.preventDefault(); const o = visible()[active]; if (o) choose(o); }
+    else if (e.key === 'Escape') { e.preventDefault(); close(); }
+  });
+  options.forEach((o) => o.addEventListener('click', () => choose(o)));
+  document.addEventListener('click', (e) => { if (!panel.hidden && !root.contains(e.target)) close(false); });
+}
+
 // ---------- Submission form ----------
 async function showSubmit(route) {
   await mePromise;
@@ -248,6 +313,8 @@ async function showSubmit(route) {
     };
     countrySel.addEventListener('change', showRegion); showRegion();
   }
+
+  bindTrackPicker(form.querySelector('#trackPicker'));
 
   form.querySelectorAll('#ccSeg button').forEach((b) => b.addEventListener('click', () => {
     form.querySelectorAll('#ccSeg button').forEach((x) => x.classList.toggle('on', x === b));
@@ -274,6 +341,7 @@ async function showSubmit(route) {
     if (proofMode === 'url') fd.delete('proof_file'); else fd.delete('proof_url');
     const error = (t) => { msg.innerHTML = `<div class="alert alert-err">${esc(t)}</div>`; msg.scrollIntoView({ behavior: 'smooth', block: 'center' }); };
     if (!account && !fd.get('country')) return error('Please select your country.');
+    if (!fd.get('track_id')) return error('Please select a track.');
     if (!/^\d{1,2}:[0-5]\d[.,]\d{3}$/.test(fd.get('time').trim())) return error('Invalid time. Expected format: 1:45.123');
     if (!form.accept_terms.checked) return error('You must accept the Terms of Use and the Privacy Policy.');
     btn.disabled = true; btn.textContent = 'Sending…';
