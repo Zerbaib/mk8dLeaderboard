@@ -1,6 +1,6 @@
 # Track images
 
-Put one image per track in this folder, named with the track id below, e.g. `wii-rainbow-road.jpg`.
+Run `npm run download-track-images` to download all of them automatically, or put one image per track in this folder, named with the track id below, e.g. `wii-rainbow-road.jpg`.
 
 - Formats: .webp (recommended), .avif, .jpg, .jpeg or .png. Landscape 16:9 looks best (e.g. 640x360).
 - The site picks them up within 2 minutes, no restart needed. Missing images show a placeholder in the cup colours.

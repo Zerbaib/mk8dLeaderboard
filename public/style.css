@@ -338,3 +338,4 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .stats-4 { grid-template-columns: 1fr 1fr; }
   .charts, .admin-grid { grid-template-columns: 1fr; }
 }
+.tp-option[hidden], .tp-cup[hidden], .tp-empty[hidden] { display: none; }

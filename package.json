@@ -9,7 +9,8 @@
     "seed": "node scripts/seed.js",
     "delete-player": "node scripts/delete-player.js",
     "import-wrs": "node scripts/import-mkwrs.js",
-    "test-webhook": "node scripts/test-webhook.js"
+    "test-webhook": "node scripts/test-webhook.js",
+    "download-track-images": "node scripts/download-track-images.js"
   },
   "repository": {
     "type": "git",
@@ -33,5 +34,8 @@
   },
   "engines": {
     "node": ">=22"
+  },
+  "optionalDependencies": {
+    "sharp": "^0.35.5"
   }
 }

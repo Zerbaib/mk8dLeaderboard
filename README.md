@@ -57,8 +57,12 @@ Then add the site to [Google Search Console](https://search.google.com/search-co
 ## Track images
 
 Track cards (`/tracks`) show an image on top, and the track picker of the submission form shows a thumbnail next to each track.
-Put one image per track in `public/tracks/`, named with the track id (e.g. `wii-rainbow-road.jpg`): the full list of names is in
-`public/tracks/README.md`. Formats: `.webp`, `.avif`, `.jpg`, `.jpeg`, `.png`, ideally 16:9 (e.g. 640×360).
+**`npm run download-track-images`** downloads the 96 in-game course icons (288×162) from the Super Mario Wiki into
+`public/tracks/`, converted to WebP (~1.4 MB in total) when the optional `sharp` package is installed. It only fetches the
+missing images (`-- --force` to download them all again) and waits 1 s between downloads.
+
+You can also put your own images in `public/tracks/`, named with the track id (e.g. `wii-rainbow-road.jpg`): the full list
+of names is in `public/tracks/README.md`. Formats: `.webp`, `.avif`, `.jpg`, `.jpeg`, `.png`, ideally 16:9.
 
 - New images are picked up within 2 minutes, without restarting. A missing image shows a placeholder in the cup colours.
 - The images are **ignored by git** (they are not published with the code): copy them to the server directly.
