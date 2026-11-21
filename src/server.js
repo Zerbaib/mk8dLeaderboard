@@ -69,6 +69,16 @@ const app = express();
 app.set('trust proxy', true);
 app.use(express.json());
 auth.mount(app); // login with Discord, /api/me and /api/account/*
+// One address only for search engines: www.<domain> is redirected to <domain> (or the other way round, per LEGAL_SITE_URL)
+const CANONICAL_HOST = (() => { try { return new URL(LEGAL.siteUrl).host; } catch { return ''; } })();
+app.use((req, res, next) => {
+  const host = String(req.headers.host || '').toLowerCase();
+  const twin = CANONICAL_HOST.startsWith('www.') ? CANONICAL_HOST.slice(4) : `www.${CANONICAL_HOST}`;
+  if (CANONICAL_HOST && host === twin && (req.method === 'GET' || req.method === 'HEAD')) {
+    return res.redirect(301, `${LEGAL.siteUrl}${req.originalUrl}`);
+  }
+  next();
+});
 app.use(express.static(path.join(__dirname, '..', 'public'), { index: false }));
 app.use('/uploads', express.static(UPLOAD_DIR, { maxAge: '7d' }));
 // Self-hosted flags and fonts: no request is made to third-party servers

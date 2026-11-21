@@ -161,7 +161,27 @@
         <td><a class="player-link" href="${url.track(r.track_id, r.cc)}">${esc(trackById[r.track_id]?.name)}</a></td>
         <td><span class="pill pill-cc">${r.cc}cc</span></td>
         <td class="num time">${fmt(r.time_ms)}</td></tr>`).join('')}</tbody></table></div>`
-    : empty('No times yet', 'Be the first to submit one!')}`,
+    : empty('No times yet', 'Be the first to submit one!')}
+    <section class="about">
+      <h2 class="section-title">A Mario Kart 8 Deluxe leaderboard for every player</h2>
+      <div class="about-grid">
+        <div class="card card-pad">
+          <h3>All 96 tracks, 150cc and 200cc</h3>
+          <p>Every Mario Kart 8 Deluxe track has its own time trial leaderboard in 150cc and 200cc, from Mario Kart Stadium to the
+            Booster Course Pass. See the <a href="/tracks">150cc world records</a> or the <a href="/tracks?cc=200">200cc world records</a> on every track.</p>
+        </div>
+        <div class="card card-pad">
+          <h3>Verified times</h3>
+          <p>Each time is sent with a video or screenshot proof and checked by a moderator before it appears on the leaderboard.
+            Players confirm their identity with Discord, so nobody can post times under your name. <a href="/submit">Submit your time</a>.</p>
+        </div>
+        <div class="card card-pad">
+          <h3>Rankings by player, country and region</h3>
+          <p>Points reward both speed and the number of tracks played. Compare the best <a href="/players">Mario Kart 8 Deluxe players</a>,
+            <a href="/countries">countries</a> and <a href="/regions">regions</a> (Europe, the Americas, Asia…). <a href="/points">How points work</a>.</p>
+        </div>
+      </div>
+    </section>`,
       };
     }
 
@@ -174,7 +194,7 @@
         description: `Current ${cc}cc time trial record on every Mario Kart 8 Deluxe track, from Mario Kart Stadium to the Booster Course Pass. Click a track for the full leaderboard.`,
         crumbs: [crumb('Tracks', url.tracks(cc))],
         html: `
-    <div class="page-head"><div><h1>${cc}cc track records</h1><p>Current record on every track. Click a track to see the full leaderboard.</p></div>
+    <div class="page-head"><div><h1>Mario Kart 8 Deluxe ${cc}cc world records</h1><p>The current ${cc}cc time trial record on all 96 tracks, base game and Booster Course Pass. Click a track to see its full leaderboard.</p></div>
       <div class="toolbar"><input id="q" type="search" placeholder="Search a track…" aria-label="Search a track">${ccToggle(cc, url.tracks)}</div></div>
     <div id="cups">${byCup.map(({ cup, i, list }) => `
       <section class="cup" data-cup>
@@ -215,7 +235,7 @@
           itemListElement: rows.slice(0, 10).map((r, i) => ({ '@type': 'ListItem', position: i + 1, name: `${r.name} – ${fmt(r.time_ms)}`, url: `${L.siteUrl}${url.player(r.player_id, cc)}` })),
         }] : [],
         html: `
-    <div class="page-head"><div><p class="crumbs"><a class="player-link" href="${url.tracks(cc)}">← Tracks</a> · ${esc(t.cup)}</p>
+    <div class="page-head"><div><p class="crumbs"><a class="player-link" href="${url.tracks(cc)}">← Tracks</a> · Mario Kart 8 Deluxe · ${esc(t.cup)}</p>
         <h1>${esc(t.name)} <span class="h1-cc">${cc}cc</span></h1><p>${intro}</p></div>
       <div class="toolbar"><select id="country" aria-label="Country">${countryOptions(country)}</select>${regionSelect(region)}${ccToggle(cc, (c) => url.track(t.id, c, { country, region }))}</div></div>
     ${rows.length >= 3 ? `<div class="podium">${[1, 0, 2].map((i) => `<div class="card ${i === 0 ? 'p1' : ''}">
@@ -243,7 +263,7 @@
         description: `Best Mario Kart 8 Deluxe time trial players in ${cc}cc, ranked by points over all 96 tracks: records held, tracks played and total points.`,
         crumbs: [crumb('Players', url.players(cc))],
         html: `
-    <div class="page-head"><div><h1>${cc}cc player rankings</h1><p>Sum of points across all tracks (1,000 points per record). <a class="player-link" href="/points">How points work</a></p></div>
+    <div class="page-head"><div><h1>Mario Kart 8 Deluxe ${cc}cc player rankings</h1><p>The best Mario Kart 8 Deluxe time trial players, ranked by points on all tracks (1,000 points per record). <a class="player-link" href="/points">How points work</a></p></div>
       <div class="toolbar"><select id="country" aria-label="Country">${countryOptions(country)}</select>${regionSelect(region)}${ccToggle(cc, (c) => url.players(c, { country, region }))}</div></div>
     ${rows.length ? `<div class="card table-wrap"><table>
       <thead><tr><th>#</th><th>Player</th><th class="hide-sm">Region</th><th class="num">Tracks</th><th class="num">Records</th><th class="num">Points</th></tr></thead>
@@ -306,7 +326,7 @@
         description: `Which country has the best Mario Kart 8 Deluxe time trial players? ${cc}cc ranking by country: players, records and total points.`,
         crumbs: [crumb('Countries', url.countries(cc))],
         html: `
-    <div class="page-head"><div><h1>${cc}cc country rankings</h1><p>Sum of the points of every player from each country.</p></div>${ccToggle(cc, url.countries)}</div>
+    <div class="page-head"><div><h1>Mario Kart 8 Deluxe ${cc}cc country rankings</h1><p>Which country has the fastest Mario Kart 8 Deluxe players? Sum of the points of every player from each country.</p></div>${ccToggle(cc, url.countries)}</div>
     ${rows.length ? `<div class="card table-wrap"><table>
       <thead><tr><th>#</th><th>Country</th><th class="hide-sm">Region</th><th class="num">Players</th><th class="num">Records</th><th class="hide-sm">Top player</th><th class="num">Points</th></tr></thead>
       <tbody>${rows.map((r, i) => `<tr>
@@ -328,7 +348,7 @@
         description: `Europe vs North America vs Asia and the rest of the world: Mario Kart 8 Deluxe ${cc}cc time trial ranking by region.`,
         crumbs: [crumb('Regions', url.regions(cc))],
         html: `
-    <div class="page-head"><div><h1>${cc}cc region rankings</h1><p>Europe vs the Americas vs the rest of the world: sum of the points of every player from each region.</p></div>${ccToggle(cc, url.regions)}</div>
+    <div class="page-head"><div><h1>Mario Kart 8 Deluxe ${cc}cc region rankings</h1><p>Europe vs the Americas vs the rest of the world: sum of the points of every player from each region.</p></div>${ccToggle(cc, url.regions)}</div>
     ${rows.length ? `<div class="card table-wrap"><table>
       <thead><tr><th>#</th><th>Region</th><th class="num">Countries</th><th class="num">Players</th><th class="num">Records</th><th class="hide-sm">Top player</th><th class="num">Points</th></tr></thead>
       <tbody>${rows.map((r, i) => `<tr>
