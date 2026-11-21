@@ -146,6 +146,8 @@ For everyone else the page does not exist (404).
 - times: submitted in 24 h / 7 days, awaiting review, not verified yet, approved, rejected;
 - charts of times submitted and new accounts per day (30 days), most submitted tracks, latest submissions.
 
+- storage: free disk space, database size (and its WAL file), proof files size.
+
 There are no visitor analytics: only logged-in players are counted, from their session.
 To find your Discord user ID: Discord → Settings → Advanced → **Developer Mode**, then right-click your name → **Copy User ID**.
 
@@ -239,6 +241,7 @@ What the code does to match the Privacy Policy:
 | `ADMIN_DISCORD_IDS` | Discord user IDs allowed to open `/admin` |
 | `DISCORD_VERIFIED_ROLE_ID`, `DISCORD_WR_ROLE_ID`, `DISCORD_FORMER_WR_ROLE_ID`, `DISCORD_TOP10_ROLE_ID` | Roles given automatically (optional) |
 | `ROLE_SYNC_HOURS` | Hours between two role syncs (default 48) |
+| `LOW_DISK_WARNING_MB` | A warning is logged every hour when less than this is free (default 500) |
 | `DISCORD_RECORDS_WEBHOOK_URL` | Webhook where new records are announced (optional) |
 | `DISCORD_INVITE_URL` | Public invite shown on the Terms page (optional) |
 | `LEGAL_SITE_URL` | Site address shown in the Terms of Use (defaults to `PUBLIC_URL`) |

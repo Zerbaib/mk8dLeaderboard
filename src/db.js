@@ -468,10 +468,21 @@ function getSession(id) {
 }
 
 // Remembers when a logged-in user was last active (at most once a minute)
+// Never blocks the page: if it cannot be written (e.g. disk full) the activity time is simply skipped
+let touchErrorAt = 0;
 function touchSession(id) {
   if (!id) return;
   const now = Date.now();
-  db.prepare('UPDATE sessions SET last_seen = ? WHERE id_hash = ? AND (last_seen IS NULL OR last_seen < ?)').run(now, hashId(id), now - 60000);
+  try {
+    db.prepare('UPDATE sessions SET last_seen = ? WHERE id_hash = ? AND (last_seen IS NULL OR last_seen < ?)').run(now, hashId(id), now - 60000);
+  } catch (e) {
+    if (now - touchErrorAt > 10 * 60000) { touchErrorAt = now; console.error(`[db] Could not save session activity: ${e.message}`); }
+  }
+}
+
+// Writes the WAL file back into the database and empties it
+function checkpoint() {
+  db.pragma('wal_checkpoint(TRUNCATE)');
 }
 
 function deleteSession(id) {
@@ -675,7 +686,7 @@ function adminStats() {
 }
 
 module.exports = {
-  db, parseTime, formatTime, TRACK_BY_ID,
+  db, DB_PATH, checkpoint, parseTime, formatTime, TRACK_BY_ID,
   createSubmission, getSubmission, setSubmissionDiscord, unsentSubmissions, rankingChange, TOP, purgeRejected, purgeUnverified, issueCode, verifySubmission, claimError, linkPlayer, setDiscordMessage, approveSubmission, rejectSubmission,
   trackLeaderboard, worldRecords, playerRanking, countryRanking, regionRanking, playerProfile, searchPlayers,
   stats, recentRecords,

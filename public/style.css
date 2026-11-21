@@ -358,3 +358,6 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .about p { margin: 0; color: #cdd4e2; font-size: 14px; line-height: 1.6; }
 .about a { color: var(--blue); }
 @media (max-width: 860px) { .about-grid { grid-template-columns: 1fr; } }
+
+.stat-alert { border-color: rgba(229, 53, 43, .6); }
+.stat-alert b { color: var(--red-2); }

@@ -749,6 +749,16 @@ async function viewAdmin() {
       ${tile(st.submissions.approved, 'approved', `${nf(st.submissions.approved7d)} in 7 days`)}
       ${tile(st.submissions.rejected, 'rejected')}
     </div>
+    ${st.storage ? (() => {
+    const mb = (b) => (b === null || b === undefined ? '—' : b >= 1073741824 ? `${(b / 1073741824).toFixed(1)} GB` : `${Math.max(1, Math.round(b / 1048576))} MB`);
+    const low = st.storage.disk.free !== null && st.storage.disk.free < 500 * 1048576;
+    return `<h2 class="section-title">Storage</h2>
+    <div class="stats stats-4">
+      <div class="card stat${low ? ' stat-alert' : ''}"><b>${mb(st.storage.disk.free)}</b><span>free on the disk</span>${st.storage.disk.size ? `<em>of ${mb(st.storage.disk.size)}</em>` : ''}${low ? '<em>⚠️ almost full</em>' : ''}</div>
+      <div class="card stat"><b>${mb(st.storage.database.file + st.storage.database.wal)}</b><span>database</span><em>WAL ${mb(st.storage.database.wal)}</em></div>
+      <div class="card stat"><b>${mb(st.storage.uploads.bytes)}</b><span>proof files</span><em>${nf(st.storage.uploads.files)} files</em></div>
+    </div>`;
+  })() : ''}
     <p class="muted small">Leaderboard: ${nf(st.leaderboard.players)} ranked players from ${nf(st.leaderboard.countries)} countries · ${nf(st.submissions.total)} submissions in total.</p>
 
     <div class="charts">

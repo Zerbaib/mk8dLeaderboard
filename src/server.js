@@ -248,6 +248,7 @@ function purge() {
 }
 purge();
 setInterval(purge, 60 * 60 * 1000).unref();
+require('./storage').startChecks(); // empties the WAL file every hour, warns when the disk is almost full
 
 // ---------- HTML pages (rendered on the server) ----------
 app.get('/index.html', (req, res) => res.redirect(301, '/'));

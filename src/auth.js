@@ -130,7 +130,7 @@ function mount(app) {
   app.get('/api/admin/stats', (req, res) => {
     res.set('Cache-Control', 'no-store');
     if (!isAdmin(req.user)) return res.status(404).json({ error: 'Not found' });
-    res.json(store.adminStats());
+    res.json({ ...store.adminStats(), storage: require('./storage').info() });
   });
 
   // All account changes: logged in + same origin
